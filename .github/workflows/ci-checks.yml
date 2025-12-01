@@ -12,14 +12,14 @@ on:
         default: true
         type: boolean
       runtime:
-        description: Runtime environment (python or node)
+        description: Runtime environment (`python` or `node`)
         required: true
+        default: 'python'
         type: string
 
     secrets:
       ssh-private-key:
         required: true
-
 
 jobs:
   format:
