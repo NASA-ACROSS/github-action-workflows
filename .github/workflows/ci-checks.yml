@@ -14,7 +14,7 @@ on:
       runtime:
         description: Runtime environment (`python` or `node`)
         required: true
-        default: 'python'
+        default: "python"
         type: string
 
     secrets:
