@@ -19,7 +19,8 @@ on:
 
     secrets:
       ssh-private-key:
-        required: true
+        description: "SSH Private Key to access private repositories (only needed for python)"
+        required: false
 
 jobs:
   format:
