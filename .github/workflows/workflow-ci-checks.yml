@@ -36,7 +36,7 @@ jobs:
 
       - name: Format Check (Python)
         if: inputs.runtime == 'python'
-        uses: ACROSS-Team/github-action-python-checks@v1.0.2
+        uses: NASA-ACROSS/github-action-python-checks@v1.0.2
         with:
           check-type: format
           changed-files: ${{ inputs.format-changed-files }}
@@ -44,7 +44,7 @@ jobs:
 
       - name: Format Check (Node)
         if: inputs.runtime == 'node'
-        uses: ACROSS-Team/github-action-node-checks@v0.2.4
+        uses: NASA-ACROSS/github-action-node-checks@v0.2.4
         with:
           check-type: format
 
@@ -56,7 +56,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Lint Check
-        uses: ACROSS-Team/github-action-node-checks@v0.2.4
+        uses: NASA-ACROSS/github-action-node-checks@v0.2.4
         with:
           check-type: lint
 
@@ -68,14 +68,14 @@ jobs:
 
       - name: Run Tests (Python)
         if: inputs.runtime == 'python'
-        uses: ACROSS-Team/github-action-python-checks@v1.0.2
+        uses: NASA-ACROSS/github-action-python-checks@v1.0.2
         with:
           check-type: test
           ssh-private-key: ${{ secrets.ssh-private-key }}
 
       - name: Run Tests (Node)
         if: inputs.runtime == 'node'
-        uses: ACROSS-Team/github-action-node-checks@v0.2.4
+        uses: NASA-ACROSS/github-action-node-checks@v0.2.4
         with:
           check-type: test
 
@@ -87,13 +87,13 @@ jobs:
 
       - name: Type Check (Python)
         if: inputs.runtime == 'python'
-        uses: ACROSS-Team/github-action-python-checks@v1.0.2
+        uses: NASA-ACROSS/github-action-python-checks@v1.0.2
         with:
           check-type: types
           ssh-private-key: ${{ secrets.ssh-private-key }}
 
       - name: Type Check (Node)
         if: inputs.runtime == 'node'
-        uses: ACROSS-Team/github-action-node-checks@v0.2.4
+        uses: NASA-ACROSS/github-action-node-checks@v0.2.4
         with:
           check-type: types
