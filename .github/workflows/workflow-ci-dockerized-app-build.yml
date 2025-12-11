@@ -38,7 +38,7 @@ on:
         description: "Image name (excluding registry). Defaults to {{$organization/$repository}}."
         required: false
         type: string
-        default: ''
+        default: ""
       build-args:
         description: "Build args for Docker build."
         type: string
@@ -93,10 +93,15 @@ jobs:
         id: lowercase
         uses: cloudposse/github-action-string-transformer@main
         with:
-          operation: 'lowercase'
+          operation: "lowercase"
           input-string: ${{ inputs.organization }}
 
+      - name: Check for SSH credentials
+        id: ssh_check
+        run: echo "available=${{ secrets.ssh-private-key != '' }}" >> $GITHUB_OUTPUT
+
       - name: Set up SSH
+        if: steps.ssh_check.outputs.available == 'true'
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.ssh-private-key }}
@@ -105,8 +110,8 @@ jobs:
         id: build
         uses: cloudposse/github-action-docker-build-push@1.13.0
         with:
-          cache-to: ''
-          cache-from: ''
+          cache-to: ""
+          cache-from: ""
           organization: ${{ steps.lowercase.outputs.output-string }}
           repository: ${{ inputs.repository }}
           registry: ${{ secrets.registry }}
