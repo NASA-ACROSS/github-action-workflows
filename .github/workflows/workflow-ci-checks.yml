@@ -66,6 +66,10 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Setup (Python)
+        if: inputs.runtime == 'python'
+        uses: NASA-ACROSS/github-action-python-setup@v1.0.1
+
       - name: Run Tests (Python)
         if: inputs.runtime == 'python'
         uses: NASA-ACROSS/github-action-python-checks@v1.0.2
@@ -82,8 +86,12 @@ jobs:
   types:
     runs-on: ubuntu-latest
     steps:
-      - name: Setup
+      - name: Checkout Code
         uses: actions/checkout@v4
+
+      - name: Setup (Python)
+        if: inputs.runtime == 'python'
+        uses: NASA-ACROSS/github-action-python-setup@v1.0.1
 
       - name: Type Check (Python)
         if: inputs.runtime == 'python'
