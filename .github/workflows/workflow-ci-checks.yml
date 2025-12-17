@@ -13,7 +13,7 @@ on:
         type: boolean
       runtime:
         description: Runtime environment (`python` or `node`)
-        required: true
+        required: false
         default: "python"
         type: string
 
