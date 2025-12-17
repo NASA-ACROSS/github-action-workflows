@@ -68,7 +68,7 @@ jobs:
 
       - name: Setup (Python)
         if: inputs.runtime == 'python'
-        uses: NASA-ACROSS/github-action-python-setup@v1.0.1
+        uses: NASA-ACROSS/github-action-python-setup@v1.0.2
 
       - name: Run Tests (Python)
         if: inputs.runtime == 'python'
@@ -91,7 +91,7 @@ jobs:
 
       - name: Setup (Python)
         if: inputs.runtime == 'python'
-        uses: NASA-ACROSS/github-action-python-setup@v1.0.1
+        uses: NASA-ACROSS/github-action-python-setup@v1.0.2
 
       - name: Type Check (Python)
         if: inputs.runtime == 'python'
