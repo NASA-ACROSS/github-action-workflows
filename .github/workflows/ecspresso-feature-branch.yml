@@ -112,8 +112,6 @@ on:
             ecr-iam-role:
                 description: "IAM Role ARN provide ECR write/read access"
                 required: true
-            ssh-private-key:
-                required: false
 
 jobs:
     ci-checks:
@@ -121,8 +119,6 @@ jobs:
         with:
             format-changed-files: ${{ inputs.format-changed-files }}
             runtime: ${{ inputs.runtime }}
-        secrets:
-            ssh-private-key: ${{secrets.ssh-private-key}}
 
     ci-build:
         uses: ./.github/workflows/workflow-ci-dockerized-app-build.yml
@@ -136,7 +132,6 @@ jobs:
             ecr-iam-role: ${{ secrets.ecr-iam-role }}
             registry: ${{ secrets.registry }}
             secret-outputs-passphrase: ${{ secrets.secret-outputs-passphrase }}
-            ssh-private-key: ${{secrets.ssh-private-key}}
 
     cd:
         uses: ./.github/workflows/workflow-cd-preview-ecspresso.yml
