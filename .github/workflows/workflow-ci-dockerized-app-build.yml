@@ -92,7 +92,7 @@ jobs:
 
       - name: Build
         id: build
-        uses: nitzan-frock/github-action-docker-build-push@v0.0.1
+        uses: nitzan-frock/github-action-docker-build-push@v0.0.2
         with:
           cache-to: ""
           cache-from: ""
@@ -101,12 +101,10 @@ jobs:
           registry: ${{ secrets.registry }}
           image_name: ${{inputs.image-name}}
           build-args: ${{inputs.build-args}}
+          docker-metadata-pr-head-sha: true
           # provenance is needed so there's not 'blank' entries in ecr as `-`
           # AWS handles metadata as a separate image entry.
           provenance: false
-        env:
-          # this is used as the flag for tagging the container with the latest commit on the branch.
-          DOCKER_METADATA_PR_HEAD_SHA: true
 
       - uses: cloudposse/github-action-secret-outputs@0.1.1
         id: image
