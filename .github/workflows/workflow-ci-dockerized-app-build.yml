@@ -92,7 +92,7 @@ jobs:
 
       - name: Build
         id: build
-        uses: nitzan-frock/github-action-docker-build-push@0.0.1
+        uses: nitzan-frock/github-action-docker-build-push@v0.0.1
         with:
           cache-to: ""
           cache-from: ""
