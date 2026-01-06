@@ -59,7 +59,6 @@ on:
         description: "Application name. Used with monorepo pattern when there are several applications in the repo"
         required: false
         type: string
-
       migration-env-overrides:
         description: "Array of KeyValuePairs to override env vars in the migration step."
         required: false
@@ -81,8 +80,6 @@ on:
       ecr-iam-role:
         description: "IAM Role ARN provide ECR write/read access"
         required: true
-      ssh-private-key:
-        required: false
       release-please-token:
         required: true
 
