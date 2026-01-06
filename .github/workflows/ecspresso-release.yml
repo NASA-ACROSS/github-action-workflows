@@ -65,7 +65,6 @@ on:
         description: "Application name. Used with monorepo pattern when there are several applications in the repo"
         required: false
         type: string
-
       migration-env-overrides:
         description: "Array of KeyValuePairs to override env vars in the migration step."
         required: false
