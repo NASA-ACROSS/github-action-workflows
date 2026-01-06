@@ -99,7 +99,7 @@ on:
         type: string
       output-web-url:
         description: "Display web url after deployment"
-        default: true
+        default: false
         type: boolean
     secrets:
       secret-outputs-passphrase:
@@ -142,7 +142,7 @@ jobs:
     environment:
       name: ${{ matrix.env }}
       url: ${{ steps.result.outputs.webapp-url }}
-    needs: [ preview ]
+    needs: [preview]
     steps:
       - uses: cloudposse/github-action-secret-outputs@0.1.1
         id: image
@@ -206,7 +206,7 @@ jobs:
           application: ${{ steps.environment.outputs.name }}
           taskdef-path: ${{ inputs.path }}
           mirror_to_s3_bucket: ${{ steps.environment.outputs.s3-bucket }}
-          use_partial_taskdefinition: 'true'
+          use_partial_taskdefinition: "true"
           overrides: |-
             {
               "containerOverrides":[
@@ -221,8 +221,8 @@ jobs:
               ]
             }
         env:
-          STAGE:  ${{ steps.environment.outputs.stage }}
-          AWS_ACCOUNT_ID:  ${{ steps.environment.outputs.account-id }}
+          STAGE: ${{ steps.environment.outputs.stage }}
+          AWS_ACCOUNT_ID: ${{ steps.environment.outputs.account-id }}
           ECS_SERVICE_NAME: ${{ steps.environment.outputs.name }}
           ECS_SERVICE_TASK_ROLE: ${{ steps.environment.outputs.role }}-task
           ECS_SERVICE_EXECUTION_ROLE: ${{ steps.environment.outputs.role }}-exec
@@ -242,11 +242,11 @@ jobs:
           application: ${{ steps.environment.outputs.name }}
           taskdef-path: ${{ inputs.path }}
           mirror_to_s3_bucket: ${{ steps.environment.outputs.s3-bucket }}
-          use_partial_taskdefinition: 'true'
+          use_partial_taskdefinition: "true"
           timeout: 30m
         env:
-          STAGE:  ${{ steps.environment.outputs.stage }}
-          AWS_ACCOUNT_ID:  ${{ steps.environment.outputs.account-id }}
+          STAGE: ${{ steps.environment.outputs.stage }}
+          AWS_ACCOUNT_ID: ${{ steps.environment.outputs.account-id }}
           ECS_SERVICE_NAME: ${{ steps.environment.outputs.name }}
           ECS_SERVICE_TASK_ROLE: ${{ steps.environment.outputs.role }}-task
           ECS_SERVICE_EXECUTION_ROLE: ${{ steps.environment.outputs.role }}-exec
@@ -276,8 +276,8 @@ jobs:
               ]
             }
         env:
-          STAGE:  ${{ steps.environment.outputs.stage }}
-          AWS_ACCOUNT_ID:  ${{ steps.environment.outputs.account-id }}
+          STAGE: ${{ steps.environment.outputs.stage }}
+          AWS_ACCOUNT_ID: ${{ steps.environment.outputs.account-id }}
           ECS_SERVICE_NAME: ${{ steps.environment.outputs.name }}
           ECS_SERVICE_TASK_ROLE: ${{ steps.environment.outputs.role }}-task
           ECS_SERVICE_EXECUTION_ROLE: ${{ steps.environment.outputs.role }}-exec
@@ -308,7 +308,7 @@ jobs:
     strategy:
       matrix:
         env: ${{ fromJson(needs.preview.outputs.destroy_envs) }}
-    needs: [ preview ]
+    needs: [preview]
     steps:
       - run: |
           echo "${{ inputs.image }}"
@@ -394,8 +394,8 @@ jobs:
               ]
             }
         env:
-          STAGE:  ${{ steps.environment.outputs.stage }}
-          AWS_ACCOUNT_ID:  ${{ steps.environment.outputs.account-id }}
+          STAGE: ${{ steps.environment.outputs.stage }}
+          AWS_ACCOUNT_ID: ${{ steps.environment.outputs.account-id }}
           ECS_SERVICE_NAME: ${{ steps.environment.outputs.name }}
           ECS_SERVICE_TASK_ROLE: ${{ steps.environment.outputs.role }}-task
           ECS_SERVICE_EXECUTION_ROLE: ${{ steps.environment.outputs.role }}-exec
