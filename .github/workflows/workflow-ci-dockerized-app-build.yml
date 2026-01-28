@@ -94,8 +94,10 @@ jobs:
         id: build
         uses: nitzan-frock/github-action-docker-build-push@v0.0.2
         with:
-          cache-to: ""
-          cache-from: ""
+          # uses the Amazon ECR remote cache for buildkit 
+          # https://aws.amazon.com/blogs/containers/announcing-remote-cache-support-in-amazon-ecr-for-buildkit-clients/
+          cache-to: "mode=max,image-manifest=true,oci-mediatypes=true,type=registry,ref=${{ secrets.registry }}:cache"
+          cache-from: "type=registry,ref=${{ secrets.registry }}:cache"
           organization: ${{ steps.lowercase.outputs.output-string }}
           repository: ${{ inputs.repository }}
           registry: ${{ secrets.registry }}
