@@ -103,6 +103,7 @@ jobs:
           registry: ${{ secrets.registry }}
           image_name: ${{inputs.image-name}}
           build-args: ${{inputs.build-args}}
+          ecr-cache: true
           docker-metadata-pr-head-sha: true
           # provenance is needed so there's not 'blank' entries in ecr as `-`
           # AWS handles metadata as a separate image entry.
