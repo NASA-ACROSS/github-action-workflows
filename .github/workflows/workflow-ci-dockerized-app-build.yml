@@ -92,7 +92,7 @@ jobs:
 
       - name: Build
         id: build
-        uses: nitzan-frock/github-action-docker-build-push@v0.1.0
+        uses: nitzan-frock/github-action-docker-build-push@v0.1.1
         with:
           # uses the Amazon ECR remote cache for buildkit 
           # https://aws.amazon.com/blogs/containers/announcing-remote-cache-support-in-amazon-ecr-for-buildkit-clients/
