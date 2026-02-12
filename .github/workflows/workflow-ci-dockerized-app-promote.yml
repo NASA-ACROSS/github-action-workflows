@@ -57,7 +57,7 @@ on:
         description: "Image name (excluding registry). Defaults to {{$organization/$repository}}."
         required: false
         type: string
-        default: ''
+        default: ""
     secrets:
       ecr-region:
         description: "ECR AWS region"
@@ -111,15 +111,20 @@ jobs:
         id: lowercase
         uses: cloudposse/github-action-string-transformer@main
         with:
-          operation: 'lowercase'
+          operation: "lowercase"
           input-string: ${{ inputs.organization }}
 
-      - uses: ./.github/actions/promote
+      - uses: cloudposse/github-action-docker-promote@v0.5.0
         id: promote
         with:
           registry: ${{ secrets.registry }}
-          repository: ${{ steps.context.outputs.image }}
-          from: sha-${{ inputs.test-sha || github.sha }}
+          # required but not used since image_name is provided
+          organization: ${{ steps.lowercase.outputs.output }}
+          # required but not used since image_name is provided
+          repository: ${{ inputs.repository }}
+          # overrides using org and repo
+          image_name: ${{ steps.context.outputs.image }}
+          from: sha-${{ github.sha }}
           to: ${{ inputs.version }}
           use_metadata: false
 
