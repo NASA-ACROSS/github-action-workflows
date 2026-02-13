@@ -36,7 +36,7 @@ jobs:
 
       - name: Format Check (Python)
         if: inputs.runtime == 'python'
-        uses: NASA-ACROSS/github-action-python-checks@v1.0.2
+        uses: NASA-ACROSS/github-action-python-checks@v1.0.3
         with:
           check-type: format
           changed-files: ${{ inputs.format-changed-files }}
@@ -72,7 +72,7 @@ jobs:
 
       - name: Run Tests (Python)
         if: inputs.runtime == 'python'
-        uses: NASA-ACROSS/github-action-python-checks@v1.0.2
+        uses: NASA-ACROSS/github-action-python-checks@v1.0.3
         with:
           check-type: test
           ssh-private-key: ${{ secrets.ssh-private-key }}
@@ -95,7 +95,7 @@ jobs:
 
       - name: Type Check (Python)
         if: inputs.runtime == 'python'
-        uses: NASA-ACROSS/github-action-python-checks@v1.0.2
+        uses: NASA-ACROSS/github-action-python-checks@v1.0.3
         with:
           check-type: types
           ssh-private-key: ${{ secrets.ssh-private-key }}
