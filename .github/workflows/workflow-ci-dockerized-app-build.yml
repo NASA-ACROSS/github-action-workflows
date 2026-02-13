@@ -85,7 +85,7 @@ jobs:
 
       - name: Sanitize Organization
         id: lowercase
-        uses: cloudposse/github-action-string-transformer@main
+        uses: cloudposse-github-actions/string-transformer@main
         with:
           operation: "lowercase"
           input-string: ${{ inputs.organization }}
