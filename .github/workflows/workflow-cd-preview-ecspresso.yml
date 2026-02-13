@@ -310,15 +310,15 @@ jobs:
         env: ${{ fromJson(needs.preview.outputs.destroy_envs) }}
     needs: [preview]
     steps:
-      - run: |
-          echo "${{ inputs.image }}"
-          echo "secret: ${{ secrets.secret-outputs-passphrase }}"
       - uses: cloudposse/github-action-secret-outputs@0.1.1
         id: image
         with:
           secret: ${{ secrets.secret-outputs-passphrase }}
           op: decode
           in: ${{ inputs.image }}
+
+      - run: |
+          echo "${{ steps.image.outputs.out }}"
 
       - name: Seek deployment
         uses: cloudposse/github-action-seek-deployment@0.1.0

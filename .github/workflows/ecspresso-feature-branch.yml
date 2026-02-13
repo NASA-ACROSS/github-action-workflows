@@ -114,19 +114,13 @@ on:
                 required: true
 
 jobs:
-    ci-checks:
-        uses: ./.github/workflows/workflow-ci-checks.yml
-        with:
-            format-changed-files: ${{ inputs.format-changed-files }}
-            runtime: ${{ inputs.runtime }}
-
-    ci-build:
+    ci:
         uses: ./.github/workflows/workflow-ci-dockerized-app-build.yml
         with:
             organization: ${{ inputs.organization }}
             repository: ${{ inputs.repository }}
             image-name: ${{inputs.image-name}}
-            build-args: "BUILD_ENV=deploy"
+            build-args: "BUILD_ENV=deploy,BUILD_VERSION=${{ github.event.pull_request.head.sha }}"
         secrets:
             ecr-region: ${{ secrets.ecr-region }}
             ecr-iam-role: ${{ secrets.ecr-iam-role }}
@@ -135,11 +129,11 @@ jobs:
 
     cd:
         uses: ./.github/workflows/workflow-cd-preview-ecspresso.yml
-        needs: [ci-build]
+        needs: [ci]
         if: ${{ always() }}
         with:
-            image: ${{ needs.ci-build.outputs.image }}
-            tag: ${{ needs.ci-build.outputs.tag }}
+            image: ${{ needs.ci.outputs.image }}
+            tag: ${{ needs.ci.outputs.tag }}
             repository: ${{ inputs.repository }}
             open: ${{ inputs.open }}
             labels: ${{ inputs.labels }}
