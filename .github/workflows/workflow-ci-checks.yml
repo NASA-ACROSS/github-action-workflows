@@ -16,6 +16,18 @@ on:
         required: false
         default: "python"
         type: string
+      across-test-access-token:
+        description: ACROSS access token, required for unit tests since there is no live server
+        required: false
+        type: string
+      across-server-id:
+        description: ACROSS server ID
+        required: false
+        type: string
+      across-server-secret:
+        description: ACROSS server secret
+        required: false
+        type: string
 
     secrets:
       ssh-private-key:
@@ -82,6 +94,9 @@ jobs:
         uses: NASA-ACROSS/github-action-node-checks@main
         with:
           check-type: test
+          across-test-access-token: ${{ inputs.across-test-access-token }}
+          across-server-id: ${{ inputs.across-server-id }}
+          across-server-secret: ${{ inputs.across-server-secret }}
 
   types:
     runs-on: ubuntu-latest
