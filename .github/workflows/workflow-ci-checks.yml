@@ -50,12 +50,17 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
-    if: inputs.runtime == 'node'
     steps:
+      - name: Lint Check (Python)
+        if: inputs.runtime == 'python'
+        run: echo "No linting for Python runtime since it's covered by formatting check."
+
       - name: Checkout code
+        if: inputs.runtime == 'node'
         uses: actions/checkout@v4
 
-      - name: Lint Check
+      - name: Lint Check (Node)
+        if: inputs.runtime == 'node'
         uses: NASA-ACROSS/github-action-node-checks@v0.2.6
         with:
           check-type: lint
