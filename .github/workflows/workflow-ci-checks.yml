@@ -61,7 +61,7 @@ jobs:
 
       - name: Lint Check (Node)
         if: inputs.runtime == 'node'
-        uses: NASA-ACROSS/github-action-node-checks@v0.2.6
+        uses: NASA-ACROSS/github-action-node-checks@main
         with:
           check-type: lint
 
