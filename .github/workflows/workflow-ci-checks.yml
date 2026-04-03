@@ -44,7 +44,7 @@ jobs:
 
       - name: Format Check (Node)
         if: inputs.runtime == 'node'
-        uses: NASA-ACROSS/github-action-node-checks@v0.2.6
+        uses: NASA-ACROSS/github-action-node-checks@v1
         with:
           check-type: format
 
@@ -84,7 +84,7 @@ jobs:
 
       - name: Run Tests (Node)
         if: inputs.runtime == 'node'
-        uses: NASA-ACROSS/github-action-node-checks@v0.2.6
+        uses: NASA-ACROSS/github-action-node-checks@v1
         with:
           check-type: test
 
@@ -107,6 +107,6 @@ jobs:
 
       - name: Type Check (Node)
         if: inputs.runtime == 'node'
-        uses: NASA-ACROSS/github-action-node-checks@v0.2.6
+        uses: NASA-ACROSS/github-action-node-checks@v1
         with:
           check-type: types
