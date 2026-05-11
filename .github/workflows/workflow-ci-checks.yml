@@ -82,7 +82,7 @@ jobs:
         if: inputs.runtime == 'python'
         uses: NASA-ACROSS/github-action-python-setup@v1.0.2
         with:
-          python-version: inputs.runtime-version
+          python-version: ${{ inputs.runtime-version || '3.12' }}
 
       - name: Run Tests (Python)
         if: inputs.runtime == 'python'
