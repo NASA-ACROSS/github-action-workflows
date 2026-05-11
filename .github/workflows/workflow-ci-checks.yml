@@ -32,6 +32,9 @@ jobs:
     steps:
       - run: |
           echo "Runtime: ${{inputs.runtime}}"
+          if [ -n "${{ inputs.runtime-version }}" ]; then
+            echo "Version: ${{inputs.runtime-version}}"
+          fi
   format:
     runs-on: ubuntu-latest
     steps:
