@@ -16,6 +16,10 @@ on:
         required: false
         default: "python"
         type: string
+      runtime-version:
+        description: Version of the runtime env (python or node)
+        required: false
+        type: string
 
     secrets:
       ssh-private-key:
@@ -74,6 +78,8 @@ jobs:
       - name: Setup (Python)
         if: inputs.runtime == 'python'
         uses: NASA-ACROSS/github-action-python-setup@v1.0.2
+        with:
+          python-version: inputs.runtime-version
 
       - name: Run Tests (Python)
         if: inputs.runtime == 'python'
@@ -97,6 +103,8 @@ jobs:
       - name: Setup (Python)
         if: inputs.runtime == 'python'
         uses: NASA-ACROSS/github-action-python-setup@v1.0.2
+        with:
+          python-version: inputs.runtime-version
 
       - name: Type Check (Python)
         if: inputs.runtime == 'python'
