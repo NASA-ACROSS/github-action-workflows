@@ -95,7 +95,7 @@ permissions:
 
 jobs:
   deploy:
-    runs-on: ["ubuntu-latest"]
+    runs-on: ["ubuntu-24.04"]
     environment:
       name: ${{ inputs.environment }}
       url: ${{ steps.result.outputs.webapp-url }}
