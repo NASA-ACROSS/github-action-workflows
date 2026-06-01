@@ -28,7 +28,7 @@ on:
 
 jobs:
   runtime:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - run: |
           echo "Runtime: ${{inputs.runtime}}"
@@ -36,7 +36,7 @@ jobs:
             echo "Version: ${{inputs.runtime-version}}"
           fi
   format:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -56,7 +56,7 @@ jobs:
           check-type: format
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Lint Check (Python)
         if: inputs.runtime == 'python'
@@ -73,7 +73,7 @@ jobs:
           check-type: lint
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -98,7 +98,7 @@ jobs:
           check-type: test
 
   types:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
