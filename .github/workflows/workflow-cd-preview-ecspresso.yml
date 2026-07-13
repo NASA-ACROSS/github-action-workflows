@@ -97,6 +97,11 @@ on:
         description: "Matrix key - matrix output workaround. [Read more](https://github.com/cloudposse/github-action-matrix-outputs-write#introduction)"
         required: false
         type: string
+      migration-env-overrides:
+        description: "Array of KeyValuePairs to override env vars in the migration step."
+        required: false
+        type: string
+        default: "[]"
       output-web-url:
         description: "Display web url after deployment"
         default: false
@@ -212,11 +217,8 @@ jobs:
               "containerOverrides":[
                 {
                   "name": "${{ inputs.app }}",
-                  "command": ["alembic", "upgrade", "head"],
-                  "environment": [{
-                    "name": "ACROSS_DB_USER",
-                    "value": "ci"
-                  }]
+                  "command": ["sh", "-c", "alembic upgrade head && alembic check"],
+                  "environment": ${{inputs.migration-env-overrides}},
                 }
               ]
             }
