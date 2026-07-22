@@ -160,7 +160,7 @@ jobs:
                 {
                   "name": "${{ inputs.app }}",
                   "command": ["sh", "-c", "alembic upgrade head && alembic check"],
-                  "environment": ${{inputs.migration-env-overrides}},
+                  "environment": ${{inputs.migration-env-overrides}}
                 }
               ]
             }
