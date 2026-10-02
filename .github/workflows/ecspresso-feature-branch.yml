@@ -144,6 +144,7 @@ jobs:
             app: ${{ inputs.app }}
             env-label: |
                 feat1: deploy/feat1
+                feat2: deploy/feat2
             enable-migration: ${{ inputs.enable-migration }}
             support-rollback: ${{ inputs.support-rollback }}
             output-web-url: ${{ inputs.output-web-url }}
