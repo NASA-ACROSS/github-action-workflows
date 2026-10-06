@@ -96,6 +96,10 @@ on:
                 required: false
                 default: "python"
                 type: string
+            build-args:
+                description: Additional build-args for docker build
+                required: false
+                type: string
         secrets:
             secret-outputs-passphrase:
                 description: "Passphrase to encrypt/decrypt secret outputs with gpg. For more information [read](https://github.com/cloudposse/github-action-secret-outputs)"
@@ -121,6 +125,7 @@ jobs:
             repository: ${{ inputs.repository }}
             image-name: ${{inputs.image-name}}
             build-args: |
+                ${{ inputs.build-args }}
                 BUILD_VERSION=${{ github.event.pull_request.head.sha }}
         secrets:
             ecr-region: ${{ secrets.ecr-region }}
