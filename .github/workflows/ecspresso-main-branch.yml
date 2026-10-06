@@ -63,6 +63,10 @@ on:
         description: "Array of KeyValuePairs to override env vars in the migration step."
         required: false
         type: string
+      build-args:
+          description: Additional build-args for docker build
+          required: false
+          type: string
 
     secrets:
       secret-outputs-passphrase:
@@ -90,7 +94,9 @@ jobs:
       organization: ${{ inputs.organization }}
       repository: ${{ inputs.repository }}
       image-name: ${{ inputs.image-name }}
-      build-args: "BUILD_ENV=deploy"
+      build-args: |
+        ${{ inputs.build-args }}
+        BUILD_VERSION=${{ github.event.pull_request.head.sha }}
     secrets:
       ecr-region: ${{ secrets.ecr-region }}
       ecr-iam-role: ${{ secrets.ecr-iam-role }}
