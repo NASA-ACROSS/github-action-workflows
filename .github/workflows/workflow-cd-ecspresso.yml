@@ -139,6 +139,11 @@ jobs:
           role-to-assume: ${{ steps.environment.outputs.role }}-gha
           role-skip-session-tagging: true
 
+      - name: Login to Amazon ECR Public
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          registry-type: public
+
       - name: Run DB Migration
         uses: cloudposse/github-action-run-ecspresso@0.2.0
         continue-on-error: true
