@@ -150,6 +150,13 @@ jobs:
           repository: ${{ inputs.repository }}
           application: ${{ inputs.app }}
 
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2.2.0
+        with:
+          aws-region: ${{ steps.environment.outputs.region }}
+          role-to-assume: ${{ steps.environment.outputs.role }}-gha
+          role-skip-session-tagging: true
+
       - name: Run DB Migration
         uses: cloudposse/github-action-run-ecspresso@0.2.0
         continue-on-error: true
