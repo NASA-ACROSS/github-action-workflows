@@ -156,3 +156,5 @@ jobs:
         secrets:
             secret-outputs-passphrase: ${{ secrets.secret-outputs-passphrase }}
             github-private-actions-pat: ${{ secrets.github-private-actions-pat }}
+            ecr-region: ${{ secrets.ecr-region }}
+            ecr-iam-role: ${{ secrets.ecr-iam-role }}
