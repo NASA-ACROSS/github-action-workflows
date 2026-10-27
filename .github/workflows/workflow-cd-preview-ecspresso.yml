@@ -150,9 +150,6 @@ jobs:
       url: ${{ steps.result.outputs.webapp-url }}
     needs: [preview]
     steps:
-
-      
-
       - uses: NASA-ACROSS/github-action-workflows/.github/actions/secret-outputs@main
         id: image
         with:
