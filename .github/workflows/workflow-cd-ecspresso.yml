@@ -106,7 +106,7 @@ jobs:
       name: ${{ inputs.environment }}
       url: ${{ steps.result.outputs.webapp-url }}
     steps:
-      - uses: NASA-ACROSS/github-action-workflows/.github/actions/secret-outputs@main
+      - uses: ./.github/actions/secret-outputs
         id: image
         with:
           secret: ${{ secrets.secret-outputs-passphrase }}
