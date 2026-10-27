@@ -114,7 +114,8 @@ jobs:
           # AWS handles metadata as a separate image entry.
           provenance: false
           
-      - uses: ./.github/actions/secret-outputs
+      - uses: $/actions/secret-outputs
+
         id: image
         with:
           secret: ${{ secrets.secret-outputs-passphrase }}
