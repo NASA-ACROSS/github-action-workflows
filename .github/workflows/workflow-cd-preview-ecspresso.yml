@@ -150,7 +150,8 @@ jobs:
       url: ${{ steps.result.outputs.webapp-url }}
     needs: [preview]
     steps:
-      - uses: ./.github/actions/secret-outputs
+      - uses: $/actions/secret-outputs
+
         id: image
         with:
           secret: ${{ secrets.secret-outputs-passphrase }}
@@ -313,7 +314,8 @@ jobs:
         env: ${{ fromJson(needs.preview.outputs.destroy_envs) }}
     needs: [preview]
     steps:
-      - uses: ./.github/actions/secret-outputs
+      - uses: $/actions/secret-outputs
+
         id: image
         with:
           secret: ${{ secrets.secret-outputs-passphrase }}
