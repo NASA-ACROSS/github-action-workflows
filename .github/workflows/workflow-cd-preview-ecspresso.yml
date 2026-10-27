@@ -113,12 +113,7 @@ on:
       github-private-actions-pat:
         description: "Github PAT allow to pull private repos"
         required: true
-      ecr-region:
-        description: "ECR AWS region"
-        required: true
-      ecr-iam-role:
-        description: "IAM Role ARN provide ECR write/read access"
-        required: true
+
 permissions:
   pull-requests: write
   deployments: write
@@ -154,20 +149,8 @@ jobs:
       name: ${{ matrix.env }}
       url: ${{ steps.result.outputs.webapp-url }}
     needs: [preview]
-    steps:
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2.2.0
-        with:
-          aws-region: ${{ secrets.ecr-region }}
-          role-to-assume: ${{ secrets.ecr-iam-role }}
-
-      - name: Login to Amazon ECR Public
-        uses: aws-actions/amazon-ecr-login@v2
-        with:
-          registry-type: public
-
-      - uses: cloudposse/github-action-secret-outputs@0.1.1
+    steps:      
+      - uses: ./actions/secret-outputs/action.yaml
         id: image
         with:
           secret: ${{ secrets.secret-outputs-passphrase }}
@@ -330,19 +313,7 @@ jobs:
         env: ${{ fromJson(needs.preview.outputs.destroy_envs) }}
     needs: [preview]
     steps:
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2.2.0
-        with:
-          aws-region: ${{ secrets.ecr-region }}
-          role-to-assume: ${{ secrets.ecr-iam-role }}
-
-      - name: Login to Amazon ECR Public
-        uses: aws-actions/amazon-ecr-login@v2
-        with:
-          registry-type: public
-
-      - uses: cloudposse/github-action-secret-outputs@0.1.1
+      - uses: ./actions/secret-outputs/action.yaml
         id: image
         with:
           secret: ${{ secrets.secret-outputs-passphrase }}

@@ -123,15 +123,15 @@ jobs:
         with:
             organization: ${{ inputs.organization }}
             repository: ${{ inputs.repository }}
-            image-name: ${{inputs.image-name}}
+            image-name: ${{ inputs.image-name }}
             build-args: |
                 ${{ inputs.build-args }}
                 BUILD_VERSION=${{ github.event.pull_request.head.sha }}
         secrets:
-            ecr-region: ${{ secrets.ecr-region }}
-            ecr-iam-role: ${{ secrets.ecr-iam-role }}
             registry: ${{ secrets.registry }}
             secret-outputs-passphrase: ${{ secrets.secret-outputs-passphrase }}
+            ecr-region: ${{ secrets.ecr-region }}
+            ecr-iam-role: ${{ secrets.ecr-iam-role }}
 
     cd:
         uses: ./.github/workflows/workflow-cd-preview-ecspresso.yml
@@ -156,5 +156,3 @@ jobs:
         secrets:
             secret-outputs-passphrase: ${{ secrets.secret-outputs-passphrase }}
             github-private-actions-pat: ${{ secrets.github-private-actions-pat }}
-            ecr-region: ${{ secrets.ecr-region }}
-            ecr-iam-role: ${{ secrets.ecr-iam-role }}
