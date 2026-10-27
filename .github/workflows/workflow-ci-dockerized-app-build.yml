@@ -107,9 +107,9 @@ jobs:
           docker-metadata-pr-head-sha: true
           # provenance is needed so there's not 'blank' entries in ecr as `-`
           # AWS handles metadata as a separate image entry.
-          provenance: false      
-
-      - uses: ./actions/secret-outputs/action.yaml
+          provenance: false
+          
+      - uses: NASA-ACROSS/github-action-workflows/.github/actions/secret-outputs@main
         id: image
         with:
           secret: ${{ secrets.secret-outputs-passphrase }}

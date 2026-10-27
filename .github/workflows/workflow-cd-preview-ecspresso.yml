@@ -149,8 +149,8 @@ jobs:
       name: ${{ matrix.env }}
       url: ${{ steps.result.outputs.webapp-url }}
     needs: [preview]
-    steps:      
-      - uses: ./actions/secret-outputs/action.yaml
+    steps:
+      - uses: NASA-ACROSS/github-action-workflows/.github/actions/secret-outputs@main
         id: image
         with:
           secret: ${{ secrets.secret-outputs-passphrase }}
@@ -313,7 +313,7 @@ jobs:
         env: ${{ fromJson(needs.preview.outputs.destroy_envs) }}
     needs: [preview]
     steps:
-      - uses: ./actions/secret-outputs/action.yaml
+      - uses: NASA-ACROSS/github-action-workflows/.github/actions/secret-outputs@main
         id: image
         with:
           secret: ${{ secrets.secret-outputs-passphrase }}
