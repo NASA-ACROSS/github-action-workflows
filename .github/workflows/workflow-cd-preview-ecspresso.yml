@@ -149,10 +149,7 @@ jobs:
       name: ${{ matrix.env }}
       url: ${{ steps.result.outputs.webapp-url }}
     needs: [preview]
-    steps:
-
-      
-
+    steps:      
       - uses: ./actions/secret-outputs/action.yaml
         id: image
         with:
