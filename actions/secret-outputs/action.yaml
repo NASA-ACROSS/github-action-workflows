@@ -1,0 +1,44 @@
+name: "Secret outputs"
+description: >-
+  Allow outputs that contain secrets to be passed between jobs by encrypting them.
+  Drop-in replacement for cloudposse/github-action-secret-outputs that runs gpg on the
+  runner instead of in a Docker container, so nothing is pulled during job setup.
+inputs:
+  op:
+    required: true
+    description: "Operation to perform (encode or decode)"
+    default: "encode"
+  in:
+    required: true
+    description: "Input data"
+  secret:
+    required: true
+    description: "Secret to encrypt/decrypt data"
+outputs:
+  out:
+    description: "Result of encryption/decryption"
+    value: ${{ steps.run.outputs.out }}
+runs:
+  using: "composite"
+  steps:
+    - id: run
+      shell: bash
+      env:
+        OPERATION: ${{ inputs.op }}
+        IN: ${{ inputs.in }}
+        SECRET: ${{ inputs.secret }}
+      run: |
+        case "${OPERATION}" in
+          encode)
+            result=$(gpg --symmetric --batch --passphrase "${SECRET}" --output - <(echo "${IN}") | base64 -w0)
+            ;;
+          decode)
+            result=$(gpg --decrypt --quiet --batch --passphrase "${SECRET}" --output - <(echo "${IN}" | base64 -d))
+            echo "::add-mask::${result}"
+            ;;
+          *)
+            echo "op input can be only {encode|decode}"
+            exit 1
+            ;;
+        esac
+        echo "out=${result}" >> "${GITHUB_OUTPUT}"
