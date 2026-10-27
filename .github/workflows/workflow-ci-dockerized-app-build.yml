@@ -111,7 +111,7 @@ jobs:
 
       
 
-      - uses: ./actions/secret-outputs/action.yaml
+      - uses: NASA-ACROSS/github-action-workflows/.github/actions/secret-outputs@main
         id: image
         with:
           secret: ${{ secrets.secret-outputs-passphrase }}
