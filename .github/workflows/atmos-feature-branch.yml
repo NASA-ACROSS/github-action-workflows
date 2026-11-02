@@ -1,7 +1,7 @@
 name: |-
     Features branch (Pull request) workflow
 
-    Build, test Docker image, deploy it with ecspresso to QA environments depends of the PR labels
+    Build, test Docker image, deploy it with Atmos (`atmos terraform deploy`) to QA environments depends of the PR labels
 
     ### Usage
 
@@ -16,7 +16,7 @@ name: |-
 
       jobs:
         do:
-          uses: ./.github/workflows/ecspresso-feature-branch.yml
+          uses: ./.github/workflows/atmos-feature-branch.yml
           with:
             organization: "$\{\{ github.event.repository.owner.login \}\}"
             repository: "$\{\{ github.event.repository.name \}\}"
@@ -134,7 +134,7 @@ jobs:
             ecr-iam-role: ${{ secrets.ecr-iam-role }}
 
     cd:
-        uses: ./.github/workflows/workflow-cd-preview-ecspresso.yml
+        uses: ./.github/workflows/workflow-cd-preview-atmos.yml
         needs: [ci]
         if: ${{ always() }}
         with:

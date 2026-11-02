@@ -1,0 +1,98 @@
+name: "Atmos ECS resolve"
+description: >-
+  Check out the Atmos infrastructure repository, install OpenTofu/Atmos, and resolve an
+  ECS service's deploy coordinates (service, cluster, GitHub Actions role, region,
+  container, ECR repository) from its `ecs-service` stack config. Needs no AWS
+  credentials, so its role output can be used to obtain them.
+inputs:
+  infra-repository:
+    required: true
+    description: "owner/repo of the Atmos infrastructure repository"
+  infra-ref:
+    required: false
+    default: main
+    description: "Ref of the infrastructure repository to deploy from"
+  github-token:
+    required: true
+    description: "Token that can read the infrastructure repository"
+  app:
+    required: true
+    description: "Service name; the component is ecs/<app>/service (ex. core-server)"
+  stage:
+    required: true
+    description: "Environment / stack stage (ex. dev); the stack is plat-ue2-<stage>"
+outputs:
+  component:
+    description: "Atmos component (ex. ecs/core-server/service)"
+    value: ${{ steps.resolve.outputs.component }}
+  stack:
+    description: "Atmos stack (ex. plat-ue2-dev)"
+    value: ${{ steps.resolve.outputs.stack }}
+  service-id:
+    description: "ECS service name / label id (ex. across-plat-ue2-dev-core-server)"
+    value: ${{ steps.resolve.outputs.service-id }}
+  cluster:
+    description: "ECS cluster name"
+    value: ${{ steps.resolve.outputs.cluster }}
+  role-arn:
+    description: "The service's GitHub Actions IAM role"
+    value: ${{ steps.resolve.outputs.role-arn }}
+  region:
+    description: "AWS region"
+    value: ${{ steps.resolve.outputs.region }}
+  container:
+    description: "Name of the service container"
+    value: ${{ steps.resolve.outputs.container }}
+  ecr-repository:
+    description: "ECR repository the component deploys from (ex. core-server)"
+    value: ${{ steps.resolve.outputs.ecr-repository }}
+  url-parameter:
+    description: "SSM parameter holding the service's first public URL"
+    value: ${{ steps.resolve.outputs.url-parameter }}
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout infrastructure
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ inputs.infra-repository }}
+        ref: ${{ inputs.infra-ref }}
+        token: ${{ inputs.github-token }}
+        path: .infrastructure
+
+    # Same toolchain as the infrastructure repo's own CI (.github/actions/atmos-setup there).
+    - uses: opentofu/setup-opentofu@v1
+      with:
+        tofu_version_file: .infrastructure/.opentofu-version
+        tofu_wrapper: false
+
+    - name: Setup atmos
+      uses: cloudposse/github-action-setup-atmos@v3
+      with:
+        install-wrapper: false
+
+    - name: Resolve
+      id: resolve
+      shell: bash
+      working-directory: .infrastructure
+      env:
+        COMPONENT: ecs/${{ inputs.app }}/service
+        STACK: plat-ue2-${{ inputs.stage }}
+      run: |
+        set -euo pipefail
+        # Mirrors the cloudposse null-label id (label_order in stacks/mixins/org/across.yaml)
+        # that the ecs-service component uses for the service, its cluster and its roles.
+        atmos describe component "$COMPONENT" -s "$STACK" --format json | jq -r '
+          .vars as $v
+          | ([$v.namespace, $v.tenant, $v.environment, $v.stage, $v.name] + ($v.attributes // [])
+              | map(select(. != null and . != "")) | join("-")) as $id
+          | if ($v.enabled | not) then error("\(env.COMPONENT) is disabled in \(env.STACK)") else . end
+          | "component=\(env.COMPONENT)",
+            "stack=\(env.STACK)",
+            "service-id=\($id)",
+            "cluster=\([$v.namespace, $v.tenant, $v.environment, $v.stage, $v.ecs_cluster_name] | join("-"))",
+            "role-arn=arn:aws:iam::\(.settings.aws_account_id):role/\(([$id] + $v.github_actions_iam_role_attributes) | join("-"))",
+            "region=\($v.region)",
+            "container=\($v.containers.service.name)",
+            "ecr-repository=\($v.containers.service.ecr_image | split(":")[0])",
+            "url-parameter=/\($v.ssm_key_prefix // "ecs-service")/\($id)/url/0"' | tee -a "$GITHUB_OUTPUT"

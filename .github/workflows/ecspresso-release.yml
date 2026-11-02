@@ -1,0 +1,77 @@
+name: |-
+  DEPRECATED: use atmos-release.yml
+
+  Temporary alias kept so app repos calling ecspresso-release.yml@main keep working while they
+  switch to atmos-release.yml (ecspresso is no longer used). Delete once no caller references it.
+
+on:
+  workflow_call:
+    inputs:
+      organization:
+        description: "Repository owner organization (ex. acme for repo acme/example)"
+        required: false
+        default: ${{ github.event.repository.owner.login }}
+        type: string
+      repository:
+        description: "Repository name (ex. example for repo acme/example)"
+        required: false
+        default: ${{ github.event.repository.name }}
+        type: string
+      version:
+        description: "Release version tag"
+        required: false
+        default: ${{ github.event.release.tag_name }}
+        type: string
+      enable-migration:
+        description: "Run DB migration"
+        type: boolean
+        required: false
+        default: false
+      support-rollback:
+        description: "Perform rollback on failure"
+        type: boolean
+        required: false
+        default: false
+      image-name:
+        description: "Image name (excluding registry). Defaults to {{$organization/$repository}}."
+        required: false
+        type: string
+        default: ''
+      app:
+        description: "Application name. Used with monorepo pattern when there are several applications in the repo"
+        required: false
+        type: string
+      migration-env-overrides:
+        description: "Array of KeyValuePairs to override env vars in the migration step."
+        required: false
+        type: string
+    secrets:
+      secret-outputs-passphrase:
+        description: "Passphrase to encrypt/decrypt secret outputs with gpg. For more information [read](https://github.com/cloudposse/github-action-secret-outputs)"
+        required: true
+      registry:
+        description: "ECR ARN"
+        required: true
+      github-private-actions-pat:
+        description: "Github PAT allow to pull private repos"
+        required: true
+      ecr-region:
+        description: "ECR AWS region"
+        required: true
+      ecr-iam-role:
+        description: "IAM Role ARN provide ECR write/read access"
+        required: true
+
+jobs:
+  atmos:
+    uses: ./.github/workflows/atmos-release.yml
+    with:
+      organization: ${{ inputs.organization }}
+      repository: ${{ inputs.repository }}
+      version: ${{ inputs.version }}
+      enable-migration: ${{ inputs.enable-migration }}
+      support-rollback: ${{ inputs.support-rollback }}
+      image-name: ${{ inputs.image-name }}
+      app: ${{ inputs.app }}
+      migration-env-overrides: ${{ inputs.migration-env-overrides }}
+    secrets: inherit

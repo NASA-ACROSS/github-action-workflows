@@ -1,0 +1,126 @@
+name: "ECS run task"
+description: >-
+  Run a one-off task (e.g. a DB migration) from an ECS service's current task definition
+  and wait for it to finish. Replaces cloudposse/github-action-run-ecspresso: the task
+  definition comes from the running service (owned by Atmos/OpenTofu in
+  NASA-ACROSS/across-infrastructure) instead of a partial taskdef in the app repo.
+inputs:
+  cluster:
+    required: true
+    description: "ECS cluster name"
+  service:
+    required: true
+    description: "ECS service name whose task definition and network configuration are reused"
+  container:
+    required: true
+    description: "Name of the container to override"
+  image:
+    required: false
+    default: ""
+    description: >-
+      Full image URI (with tag) for the container. When set, a temporary task definition
+      revision is registered with this image and deregistered after the run.
+  command:
+    required: false
+    default: ""
+    description: "JSON array command override for the container (ex. [\"sh\", \"-c\", \"alembic upgrade head\"])"
+  environment:
+    required: false
+    default: "[]"
+    description: "JSON array of {name, value} env var overrides for the container"
+  extra-environment:
+    required: false
+    default: "[]"
+    description: "JSON array of {name, value} env var overrides appended to `environment`"
+  timeout-minutes:
+    required: false
+    default: "30"
+    description: "How long to wait for the task to stop"
+runs:
+  using: "composite"
+  steps:
+    - id: run
+      shell: bash
+      env:
+        CLUSTER: ${{ inputs.cluster }}
+        SERVICE: ${{ inputs.service }}
+        CONTAINER: ${{ inputs.container }}
+        IMAGE: ${{ inputs.image }}
+        COMMAND: ${{ inputs.command }}
+        ENVIRONMENT: ${{ inputs.environment }}
+        EXTRA_ENVIRONMENT: ${{ inputs.extra-environment }}
+        TIMEOUT_MINUTES: ${{ inputs.timeout-minutes }}
+      run: |
+        set -euo pipefail
+
+        svc=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+          --query 'services[0].{td: taskDefinition, net: networkConfiguration}' --output json)
+        task_def=$(jq -r .td <<<"$svc")
+        network=$(jq -c .net <<<"$svc")
+        if [ "$task_def" = "null" ]; then
+          echo "::error::Service $SERVICE not found in cluster $CLUSTER"
+          exit 1
+        fi
+
+        temp_def=""
+        if [ -n "$IMAGE" ]; then
+          # Same family, so the run uses the service's roles, env and logging verbatim.
+          temp_def=$(aws ecs describe-task-definition --task-definition "$task_def" --query taskDefinition --output json \
+            | jq --arg c "$CONTAINER" --arg i "$IMAGE" '
+                .containerDefinitions |= map(if .name == $c then .image = $i else . end)
+                | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities,
+                      .registeredAt, .registeredBy, .deregisteredAt)' \
+            | aws ecs register-task-definition --cli-input-json file:///dev/stdin \
+                --query taskDefinition.taskDefinitionArn --output text)
+          task_def=$temp_def
+          echo "Registered temporary task definition $temp_def"
+        fi
+        task=""
+        stopped=""
+        cleanup() {
+          # Never leave a migration running behind a failed/cancelled step (a rollback may follow).
+          if [ -n "$task" ] && [ -z "$stopped" ]; then
+            echo "Stopping $task"
+            aws ecs stop-task --cluster "$CLUSTER" --task "$task" --reason "GitHub Actions step ended" >/dev/null || true
+            aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$task" || true
+          fi
+          if [ -n "$temp_def" ]; then
+            aws ecs deregister-task-definition --task-definition "$temp_def" >/dev/null || true
+          fi
+        }
+        trap cleanup EXIT
+        trap 'exit 143' TERM INT
+
+        override=$(jq -cn --arg c "$CONTAINER" --argjson env "${ENVIRONMENT:-[]}" --argjson extra "${EXTRA_ENVIRONMENT:-[]}" --arg cmd "$COMMAND" '
+          {containerOverrides: [{name: $c, environment: ($env + $extra)} + (if $cmd == "" then {} else {command: ($cmd | fromjson)} end)]}')
+
+        task=$(aws ecs run-task --cluster "$CLUSTER" --task-definition "$task_def" --launch-type FARGATE \
+          --network-configuration "$network" --overrides "$override" --started-by "github-actions" \
+          --query 'tasks[0].taskArn' --output text)
+        if [ "$task" = "None" ] || [ -z "$task" ]; then
+          echo "::error::run-task did not start a task"
+          exit 1
+        fi
+        echo "Started $task"
+
+        deadline=$(( $(date +%s) + TIMEOUT_MINUTES * 60 ))
+        while :; do
+          status=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$task" --query 'tasks[0].lastStatus' --output text)
+          if [ "$status" = "STOPPED" ]; then
+            stopped=true
+            break
+          fi
+          if [ "$(date +%s)" -ge "$deadline" ]; then
+            echo "::error::Task $task still $status after ${TIMEOUT_MINUTES}m"
+            exit 1
+          fi
+          sleep 10
+        done
+
+        result=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$task" \
+          --query "tasks[0].{reason: stoppedReason, exit: containers[?name=='$CONTAINER'] | [0].exitCode}" --output json)
+        echo "Task stopped: $result"
+        if [ "$(jq -r .exit <<<"$result")" != "0" ]; then
+          echo "::error::Container $CONTAINER exited non-zero ($(jq -r .reason <<<"$result")). See its CloudWatch log stream for task ${task##*/}."
+          exit 1
+        fi

@@ -1,0 +1,122 @@
+name: "Atmos ECS deploy"
+description: >-
+  Deploy a new image tag to an ECS service with Atmos. Replaces
+  cloudposse/github-action-deploy-ecspresso. Run atmos-ecs-preflight first: this action
+  records the image tag in SSM (where the `ecs-service` component reads it from),
+  applies the preflight's saved plan, and verifies the service actually rolled onto the tag.
+inputs:
+  component:
+    required: true
+    description: "Atmos component (ex. ecs/core-server/service)"
+  stack:
+    required: true
+    description: "Atmos stack (ex. plat-ue2-dev)"
+  cluster:
+    required: true
+    description: "ECS cluster name"
+  service-id:
+    required: true
+    description: "Service id / ECS service name (ex. across-plat-ue2-dev-core-server). Keys the image-tag SSM parameter."
+  container:
+    required: true
+    description: "Name of the service container"
+  tag:
+    required: true
+    description: "Image tag to deploy"
+  previous-tag:
+    required: true
+    description: "atmos-ecs-preflight's previous-tag output"
+  planfile:
+    required: true
+    description: "atmos-ecs-preflight's planfile output"
+runs:
+  using: "composite"
+  steps:
+    - name: Record image tag
+      id: tag
+      shell: bash
+      env:
+        PARAMETER: /ecs-service/${{ inputs.service-id }}/image-tag
+        TAG: ${{ inputs.tag }}
+        PREVIOUS: ${{ inputs.previous-tag }}
+      run: |
+        set -euo pipefail
+        # Terraform ignores later changes to this parameter's value; it is the source of
+        # truth for the next apply from the infrastructure repo.
+        aws ssm put-parameter --name "$PARAMETER" --value "$TAG" --type String --overwrite >/dev/null
+        echo "$PARAMETER: $PREVIOUS -> $TAG"
+        echo "written=true" >> "$GITHUB_OUTPUT"
+
+    - name: Deploy
+      shell: bash
+      working-directory: .infrastructure
+      env:
+        COMPONENT: ${{ inputs.component }}
+        STACK: ${{ inputs.stack }}
+        PLANFILE: ${{ inputs.planfile }}
+        TF_IN_AUTOMATION: "true"
+        TF_INPUT: "false"
+        TF_CLI_ARGS_apply: "-lock-timeout=10m"
+      run: atmos terraform apply "$COMPONENT" -s "$STACK" --planfile "$PLANFILE"
+
+    # The provider's steady-state wait also succeeds after an ECS circuit-breaker rollback,
+    # so check that the primary deployment completed on the new tag.
+    - name: Verify rollout
+      shell: bash
+      env:
+        CLUSTER: ${{ inputs.cluster }}
+        SERVICE: ${{ inputs.service-id }}
+        CONTAINER: ${{ inputs.container }}
+        TAG: ${{ inputs.tag }}
+      run: |
+        set -euo pipefail
+        # The apply returns once running == desired, which can be before ECS marks the
+        # rollout COMPLETED (e.g. while the old task drains from the load balancer).
+        deadline=$(( $(date +%s) + 15 * 60 ))
+        while :; do
+          primary=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+            --query "services[0].deployments[?status=='PRIMARY'] | [0].{td: taskDefinition, state: rolloutState, reason: rolloutStateReason}" --output json)
+          [ "$(jq -r .state <<<"$primary")" != "IN_PROGRESS" ] && break
+          if [ "$(date +%s)" -ge "$deadline" ]; then
+            echo "::error::$SERVICE rollout still IN_PROGRESS after 15m"
+            exit 1
+          fi
+          sleep 15
+        done
+        image=$(aws ecs describe-task-definition --task-definition "$(jq -r .td <<<"$primary")" \
+          --query "taskDefinition.containerDefinitions[?name=='$CONTAINER'] | [0].image" --output text)
+        echo "Primary deployment: $(jq -c . <<<"$primary") image=$image"
+        if [ "$(jq -r .state <<<"$primary")" != "COMPLETED" ] || [ "${image##*:}" != "$TAG" ]; then
+          echo "::error::$SERVICE did not roll out $TAG ($(jq -r .reason <<<"$primary")). The ECS circuit breaker may have rolled it back."
+          exit 1
+        fi
+
+    # Otherwise the next apply from the infrastructure repo would redeploy the failed tag.
+    # Only restore when the new tag demonstrably did not land and nobody else has written since.
+    - name: Restore image tag
+      if: ${{ !success() && steps.tag.outputs.written == 'true' }}
+      shell: bash
+      env:
+        PARAMETER: /ecs-service/${{ inputs.service-id }}/image-tag
+        CLUSTER: ${{ inputs.cluster }}
+        SERVICE: ${{ inputs.service-id }}
+        CONTAINER: ${{ inputs.container }}
+        TAG: ${{ inputs.tag }}
+        PREVIOUS: ${{ inputs.previous-tag }}
+      run: |
+        set -uo pipefail
+        current=$(aws ssm get-parameter --name "$PARAMETER" --query Parameter.Value --output text)
+        if [ "$current" != "$TAG" ]; then
+          echo "::warning::$PARAMETER was changed to $current by someone else; leaving it."
+          exit 0
+        fi
+        primary=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+          --query "services[0].deployments[?status=='PRIMARY'] | [0].{td: taskDefinition, state: rolloutState}" --output json)
+        image=$(aws ecs describe-task-definition --task-definition "$(jq -r .td <<<"$primary")" \
+          --query "taskDefinition.containerDefinitions[?name=='$CONTAINER'] | [0].image" --output text)
+        if [ "${image##*:}" = "$TAG" ] && [ "$(jq -r .state <<<"$primary")" != "FAILED" ]; then
+          echo "::warning::$SERVICE's primary deployment is on $TAG ($(jq -r .state <<<"$primary")); leaving $PARAMETER at $TAG. Check the service."
+          exit 0
+        fi
+        aws ssm put-parameter --name "$PARAMETER" --value "$PREVIOUS" --type String --overwrite >/dev/null
+        echo "::warning::Deploy failed; restored $PARAMETER to $PREVIOUS"

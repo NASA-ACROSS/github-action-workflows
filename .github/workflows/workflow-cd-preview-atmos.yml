@@ -1,7 +1,9 @@
 name: |-
-  CD - Deploy to ECS QA/Preview envs with Ecspresso
+  CD - Deploy to ECS QA/Preview envs with Atmos
 
-  Deploy Docker image to ECS QA/Preview envs with Ecspresso
+  Deploy Docker image to ECS QA/Preview envs with `atmos terraform deploy` (ECS-with-Atmos).
+  The task definition is owned by the `ecs-service` component in the infrastructure
+  repo; this workflow records the image tag and applies that component.
 
   ### Usage
 
@@ -14,7 +16,7 @@ name: |-
 
     jobs:
       cd:
-        uses: ./.github/workflows/workflow-cd-preview-ecspresso.yml
+        uses: ./.github/workflows/workflow-cd-preview-atmos.yml
         if: $\{\{ always() \}\}
         with:
           image: registry.hub.docker.com/library/nginx
@@ -55,10 +57,15 @@ on:
         description: "The fully-formed ref of the branch or tag that triggered the workflow run"
         required: true
         type: string
-      path:
-        description: "The path to task definition template json file."
+      infra-repository:
+        description: "owner/repo of the Atmos infrastructure repository that owns the service's task definition"
         required: false
-        default: ./deploy/taskdef.json
+        default: ${{ github.repository_owner }}/across-infrastructure
+        type: string
+      infra-ref:
+        description: "Ref of the infrastructure repository to deploy from"
+        required: false
+        default: main
         type: string
       open:
         description: "Pull Request open/close state. Set true if opened"
@@ -141,6 +148,11 @@ jobs:
 
   deploy:
     runs-on: ["ubuntu-24.04"]
+    timeout-minutes: 60
+    # One OpenTofu apply per service/environment at a time (shared state lock).
+    concurrency:
+      group: ecs-deploy-${{ matrix.env }}-${{ inputs.app || inputs.repository }}
+      cancel-in-progress: false
     if: ${{ needs.preview.outputs.deploy_envs != '[]'  }}
     strategy:
       matrix:
@@ -167,136 +179,78 @@ jobs:
           env: ${{ matrix.env }}
           desc: Environment purged
 
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: config
-        uses: blablacar/action-config-levels@dc8ddbca36875e29f870e53bcc1160b7000ff5b2
-        id: config
+      # Service, cluster and role come from the service's stack in the infrastructure repo.
+      - name: Resolve
+        uses: $/actions/atmos-ecs-resolve
+        id: resolve
         with:
-          output_properties: true
-          patterns: |
-            - .github/configs/environment.yaml
-
-      - name: Environment Info
-        uses: cloudposse/github-action-interface-environment@0.3.0
-        id: environment
-        with:
-          implementation_repository: "${{ steps.config.outputs.environment-info-org || github.event.repository.owner.login }}/${{ steps.config.outputs.environment-info-repo }}"
-          implementation_path: ${{ steps.config.outputs.implementation_path }}
-          implementation_file: ${{ steps.config.outputs.implementation_file }}
-          implementation_ref: ${{ steps.config.outputs.implementation_ref }}
-          implementation_github_pat: ${{ secrets.github-private-actions-pat }}
-          environment: ${{ matrix.env }}
-          namespace: ${{ needs.preview.outputs.namespace }}
-          repository: ${{ inputs.repository }}
-          application: ${{ inputs.app }}
+          infra-repository: ${{ inputs.infra-repository }}
+          infra-ref: ${{ inputs.infra-ref }}
+          github-token: ${{ secrets.github-private-actions-pat }}
+          app: ${{ inputs.app || inputs.repository }}
+          # environment names (feat1, feat2, dev, staging, prod) are the stack stages
+          stage: ${{ matrix.env }}
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2.2.0
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-region: ${{ steps.environment.outputs.region }}
-          role-to-assume: ${{ steps.environment.outputs.role }}-gha
+          aws-region: ${{ steps.resolve.outputs.region }}
+          role-to-assume: ${{ steps.resolve.outputs.role-arn }}
           role-skip-session-tagging: true
 
+      # Validates the image and plans the image-only change before anything touches the environment.
+      - name: Preflight
+        uses: $/actions/atmos-ecs-preflight
+        id: preflight
+        with:
+          component: ${{ steps.resolve.outputs.component }}
+          stack: ${{ steps.resolve.outputs.stack }}
+          service-id: ${{ steps.resolve.outputs.service-id }}
+          ecr-repository: ${{ steps.resolve.outputs.ecr-repository }}
+          image: ${{ steps.image.outputs.out }}
+          tag: ${{ inputs.tag }}
+
+      # Runs the new image with the service's current task definition, before the service rolls.
       - name: Run DB Migration
-        uses: cloudposse/github-action-run-ecspresso@0.2.0
-        continue-on-error: true
+        uses: $/actions/ecs-run-task
         if: ${{ inputs.enable-migration }}
         id: db_migrate
         with:
-          image: ${{ steps.image.outputs.out }}
-          image-tag: ${{ inputs.tag }}
-          region: ${{ steps.environment.outputs.region }}
-          debug: true
-          cluster: ${{ steps.environment.outputs.cluster }}
-          application: ${{ steps.environment.outputs.name }}
-          taskdef-path: ${{ inputs.path }}
-          mirror_to_s3_bucket: ${{ steps.environment.outputs.s3-bucket }}
-          use_partial_taskdefinition: "true"
-          overrides: |-
-            {
-              "containerOverrides":[
-                {
-                  "name": "${{ inputs.app }}",
-                  "command": ["sh", "-c", "alembic upgrade head && alembic check"],
-                  "environment": ${{inputs.migration-env-overrides}}
-                }
-              ]
-            }
-        env:
-          STAGE: ${{ steps.environment.outputs.stage }}
-          AWS_ACCOUNT_ID: ${{ steps.environment.outputs.account-id }}
-          ECS_SERVICE_NAME: ${{ steps.environment.outputs.name }}
-          ECS_SERVICE_TASK_ROLE: ${{ steps.environment.outputs.role }}-task
-          ECS_SERVICE_EXECUTION_ROLE: ${{ steps.environment.outputs.role }}-exec
+          cluster: ${{ steps.resolve.outputs.cluster }}
+          service: ${{ steps.resolve.outputs.service-id }}
+          container: ${{ steps.resolve.outputs.container }}
+          image: ${{ steps.image.outputs.out }}:${{ inputs.tag }}
+          command: '["sh", "-c", "alembic upgrade head && alembic check"]'
+          environment: ${{ inputs.migration-env-overrides || '[]' }}
 
       - name: Deploy
-        uses: cloudposse/github-action-deploy-ecspresso@0.6.0
-        continue-on-error: true
-        if: ${{ steps.db_migrate.outcome != 'failure' }}
+        uses: $/actions/atmos-ecs-deploy
         id: deploy
         with:
-          image: ${{ steps.image.outputs.out }}
-          image-tag: ${{ inputs.tag }}
-          region: ${{ steps.environment.outputs.region }}
-          operation: deploy
-          debug: true
-          cluster: ${{ steps.environment.outputs.cluster }}
-          application: ${{ steps.environment.outputs.name }}
-          taskdef-path: ${{ inputs.path }}
-          mirror_to_s3_bucket: ${{ steps.environment.outputs.s3-bucket }}
-          use_partial_taskdefinition: "true"
-          timeout: 30m
-        env:
-          STAGE: ${{ steps.environment.outputs.stage }}
-          AWS_ACCOUNT_ID: ${{ steps.environment.outputs.account-id }}
-          ECS_SERVICE_NAME: ${{ steps.environment.outputs.name }}
-          ECS_SERVICE_TASK_ROLE: ${{ steps.environment.outputs.role }}-task
-          ECS_SERVICE_EXECUTION_ROLE: ${{ steps.environment.outputs.role }}-exec
+          component: ${{ steps.resolve.outputs.component }}
+          stack: ${{ steps.resolve.outputs.stack }}
+          cluster: ${{ steps.resolve.outputs.cluster }}
+          service-id: ${{ steps.resolve.outputs.service-id }}
+          container: ${{ steps.resolve.outputs.container }}
+          tag: ${{ inputs.tag }}
+          previous-tag: ${{ steps.preflight.outputs.previous-tag }}
+          planfile: ${{ steps.preflight.outputs.planfile }}
 
       - name: Run DB Rollback
-        uses: cloudposse/github-action-run-ecspresso@0.1.0
-        if: ${{ inputs.enable-migration && inputs.support-rollback && ( steps.db_migrate.outcome == 'failure' || steps.deploy.outcome == 'failure' ) }}
-        id: db_rollback
+        uses: $/actions/ecs-run-task
+        if: ${{ failure() && inputs.enable-migration && inputs.support-rollback && ( steps.db_migrate.outcome == 'failure' || steps.deploy.outcome == 'failure' ) }}
         with:
-          image: ${{ steps.image.outputs.out }}
-          image-tag: ${{ inputs.tag }}
-          region: ${{ steps.environment.outputs.region }}
-          debug: false
-          cluster: ${{ steps.environment.outputs.cluster }}
-          application: ${{ steps.environment.outputs.name }}
-          taskdef-path: ${{ inputs.path }}
-          overrides: |-
-            {
-              "containerOverrides":[
-                {
-                  "name": "app",
-                  "environment": [{
-                    "name": "RUN_DB_ROLLBACK",
-                    "value": "true"
-                  }]
-                }
-              ]
-            }
-        env:
-          STAGE: ${{ steps.environment.outputs.stage }}
-          AWS_ACCOUNT_ID: ${{ steps.environment.outputs.account-id }}
-          ECS_SERVICE_NAME: ${{ steps.environment.outputs.name }}
-          ECS_SERVICE_TASK_ROLE: ${{ steps.environment.outputs.role }}-task
-          ECS_SERVICE_EXECUTION_ROLE: ${{ steps.environment.outputs.role }}-exec
-
-      - run: |
-          echo "DB Migrate Failed: ${{ steps.db_migrate.outcome == 'failure' }} "
-          echo "Deploy Failed: ${{ steps.deploy.outcome == 'failure' }} "
-      - name: Fail
-        if: ${{ steps.db_migrate.outcome == 'failure' || steps.deploy.outcome == 'failure' }}
-        uses: cutenode/action-always-fail@v1.0.0
+          cluster: ${{ steps.resolve.outputs.cluster }}
+          service: ${{ steps.resolve.outputs.service-id }}
+          container: ${{ steps.resolve.outputs.container }}
+          image: ${{ steps.image.outputs.out }}:${{ inputs.tag }}
+          environment: ${{ inputs.migration-env-overrides || '[]' }}
+          extra-environment: '[{"name": "RUN_DB_ROLLBACK", "value": "true"}]'
 
       - if: ${{ inputs.output-web-url }}
         uses: Produce8/actions-aws-ssm-params-to-env@1.1.0
         with:
-          ssm-path: ${{ steps.environment.outputs.ssm-path }}
+          ssm-path: ${{ steps.resolve.outputs.url-parameter }}
           prefix: SSM_URL_
           decryption: true
 
@@ -342,68 +296,36 @@ jobs:
           token: ${{ github.token }}
           deployment-id: ${{ steps.deployment.outputs.id }}
 
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: config
-        uses: blablacar/action-config-levels@dc8ddbca36875e29f870e53bcc1160b7000ff5b2
-        id: config
+      # Service, cluster and role come from the service's stack in the infrastructure repo.
+      - name: Resolve
+        uses: $/actions/atmos-ecs-resolve
+        id: resolve
         with:
-          output_properties: true
-          patterns: |
-            - .github/configs/environment.yaml
-
-      - name: Environment Info
-        uses: cloudposse/github-action-interface-environment@0.3.0
-        id: environment
-        with:
-          implementation_repository: "${{ steps.config.outputs.environment-info-org || github.event.repository.owner.login }}/${{ steps.config.outputs.environment-info-repo }}"
-          implementation_path: ${{ steps.config.outputs.implementation_path }}
-          implementation_file: ${{ steps.config.outputs.implementation_file }}
-          implementation_ref: ${{ steps.config.outputs.implementation_ref }}
-          implementation_github_pat: ${{ secrets.github-private-actions-pat }}
-          environment: ${{ matrix.env }}
-          namespace: ${{ needs.preview.outputs.namespace }}
-          repository: ${{ inputs.repository }}
-          application: ${{ inputs.app }}
+          infra-repository: ${{ inputs.infra-repository }}
+          infra-ref: ${{ inputs.infra-ref }}
+          github-token: ${{ secrets.github-private-actions-pat }}
+          app: ${{ inputs.app || inputs.repository }}
+          # environment names (feat1, feat2, dev, staging, prod) are the stack stages
+          stage: ${{ matrix.env }}
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2.0.0
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-region: ${{ steps.environment.outputs.region }}
-          role-to-assume: ${{ steps.environment.outputs.role }}-gha
+          aws-region: ${{ steps.resolve.outputs.region }}
+          role-to-assume: ${{ steps.resolve.outputs.role-arn }}
           role-skip-session-tagging: true
 
       - name: Run DB Rollback
-        uses: cloudposse/github-action-run-ecspresso@0.1.0
+        uses: $/actions/ecs-run-task
         if: ${{ inputs.enable-migration && inputs.support-rollback }}
         id: db_rollback
         with:
-          image: ${{ steps.image.outputs.out }}
-          image-tag: ${{ inputs.tag }}
-          region: ${{ steps.environment.outputs.region }}
-          debug: false
-          cluster: ${{ steps.environment.outputs.cluster }}
-          application: ${{ steps.environment.outputs.name }}
-          taskdef-path: ${{ inputs.path }}
-          overrides: |-
-            {
-              "containerOverrides":[
-                {
-                  "name": "app",
-                  "environment": [{
-                    "name": "RUN_DB_ROLLBACK",
-                    "value": "true"
-                  }]
-                }
-              ]
-            }
-        env:
-          STAGE: ${{ steps.environment.outputs.stage }}
-          AWS_ACCOUNT_ID: ${{ steps.environment.outputs.account-id }}
-          ECS_SERVICE_NAME: ${{ steps.environment.outputs.name }}
-          ECS_SERVICE_TASK_ROLE: ${{ steps.environment.outputs.role }}-task
-          ECS_SERVICE_EXECUTION_ROLE: ${{ steps.environment.outputs.role }}-exec
+          cluster: ${{ steps.resolve.outputs.cluster }}
+          service: ${{ steps.resolve.outputs.service-id }}
+          container: ${{ steps.resolve.outputs.container }}
+          image: ${{ steps.image.outputs.out }}:${{ inputs.tag }}
+          environment: ${{ inputs.migration-env-overrides || '[]' }}
+          extra-environment: '[{"name": "RUN_DB_ROLLBACK", "value": "true"}]'
 
       - name: Cleanup label
         uses: cloudposse/github-action-preview-labels-cleanup@0.1.0

@@ -1,7 +1,7 @@
 name: |-
   Main branch workflow
 
-  Build, test Docker image, and deploy it with ecspresso into the `dev` environment and draft new release
+  Build, test Docker image, and deploy it with Atmos (`atmos terraform deploy`) into the `dev` environment and draft new release
 
   ### Usage
 
@@ -15,7 +15,7 @@ name: |-
 
     jobs:
       do:
-        uses: ./.github/workflows/ecspresso-main-branch.yml
+        uses: ./.github/workflows/atmos-main-branch.yml
         with:
           organization: "$\{\{ github.event.repository.owner.login }}"
           repository: "$\{\{ github.event.repository.name }}"
@@ -104,7 +104,7 @@ jobs:
       secret-outputs-passphrase: ${{ secrets.secret-outputs-passphrase }}
 
   cd:
-    uses: ./.github/workflows/workflow-cd-ecspresso.yml
+    uses: ./.github/workflows/workflow-cd-atmos.yml
     needs: [ ci ]
     with:
       image: ${{ needs.ci.outputs.image }}
