@@ -1,0 +1,201 @@
+name: |-
+  CD - Deploy to ECS with Atmos
+
+  Deploy Docker image to ECS with `atmos terraform deploy` (ECS-with-Atmos).
+  The task definition is owned by the `ecs-service` component in the infrastructure
+  repo; this workflow records the image tag and applies that component.
+
+  ### Usage
+
+  ```yaml
+    name: Deploy
+    on:
+      push:
+        branches: [ main ]
+
+    jobs:
+      cd:
+        uses: ./.github/workflows/workflow-cd-atmos.yml
+        with:
+          image: registry.hub.docker.com/library/nginx
+          tag: latest
+          repository: $\{\{ github.event.repository.name \}\}
+          environment: dev
+          enable-migration: $\{\{ inputs.enable-migration \}\}
+          support-rollback: $\{\{ inputs.support-rollback \}\}
+        secrets:
+          secret-outputs-passphrase: "$\{\{ secrets.secret-outputs-passphrase \}\}"
+          github-private-actions-pat: $\{\{ secrets.github-private-actions-pat \}\}
+  ```
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: "Docker Image to deploy"
+        required: true
+        type: string
+      tag:
+        description: "Docker Image tag to deploy"
+        required: true
+        type: string
+      repository:
+        description: "Repository name (ex. example for repo acme/example)"
+        required: true
+        type: string
+      app:
+        description: "Application name. Used with monorepo pattern when there are several applications in the repo"
+        required: false
+        type: string
+      environment:
+        description: "Environment name deploy to"
+        type: string
+        required: true
+      infra-repository:
+        description: "owner/repo of the Atmos infrastructure repository that owns the service's task definition"
+        required: false
+        default: ${{ github.repository_owner }}/across-infrastructure
+        type: string
+      infra-ref:
+        description: "Ref of the infrastructure repository to deploy from"
+        required: false
+        default: main
+        type: string
+      enable-migration:
+        description: "Run DB migration"
+        type: boolean
+        required: false
+        default: false
+      support-rollback:
+        description: "Perform rollback on failure"
+        type: boolean
+        required: false
+        default: false
+      matrix-step-name:
+        description: "Matrix step name - matrix output workaround. [Read more](https://github.com/cloudposse/github-action-matrix-outputs-write#introduction)"
+        required: false
+        type: string
+      matrix-key:
+        description: "Matrix key - matrix output workaround. [Read more](https://github.com/cloudposse/github-action-matrix-outputs-write#introduction)"
+        required: false
+        type: string
+      migration-env-overrides:
+        description: "Array of KeyValuePairs to override env vars in the migration step."
+        required: false
+        type: string
+        default: "[]"
+      output-web-url:
+        description: "Display web url after deployment"
+        default: false
+        type: boolean
+    secrets:
+      secret-outputs-passphrase:
+        description: "Passphrase to encrypt/decrypt secret outputs with gpg. For more information [read](https://github.com/cloudposse/github-action-secret-outputs)"
+        required: true
+      github-private-actions-pat:
+        description: "Github PAT allow to pull private repos"
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ["ubuntu-24.04"]
+    timeout-minutes: 60
+    # One OpenTofu apply per service/environment at a time (shared state lock).
+    concurrency:
+      group: ecs-deploy-${{ inputs.environment }}-${{ inputs.app || inputs.repository }}
+      cancel-in-progress: false
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ steps.result.outputs.webapp-url }}
+    steps:
+      - uses: $/actions/secret-outputs
+
+        id: image
+        with:
+          secret: ${{ secrets.secret-outputs-passphrase }}
+          op: decode
+          in: ${{ inputs.image }}
+
+      # Service, cluster and role come from the service's stack in the infrastructure repo.
+      - name: Resolve
+        uses: $/actions/atmos-ecs-resolve
+        id: resolve
+        with:
+          infra-repository: ${{ inputs.infra-repository }}
+          infra-ref: ${{ inputs.infra-ref }}
+          github-token: ${{ secrets.github-private-actions-pat }}
+          app: ${{ inputs.app || inputs.repository }}
+          # environment names (feat1, feat2, dev, staging, prod) are the stack stages
+          stage: ${{ inputs.environment }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ steps.resolve.outputs.region }}
+          role-to-assume: ${{ steps.resolve.outputs.role-arn }}
+          role-skip-session-tagging: true
+
+      # Validates the image and plans the image-only change before anything touches the environment.
+      - name: Preflight
+        uses: $/actions/atmos-ecs-preflight
+        id: preflight
+        with:
+          component: ${{ steps.resolve.outputs.component }}
+          stack: ${{ steps.resolve.outputs.stack }}
+          service-id: ${{ steps.resolve.outputs.service-id }}
+          ecr-repository: ${{ steps.resolve.outputs.ecr-repository }}
+          image: ${{ steps.image.outputs.out }}
+          tag: ${{ inputs.tag }}
+
+      # Runs the new image with the service's current task definition, before the service rolls.
+      - name: Run DB Migration
+        uses: $/actions/ecs-run-task
+        if: ${{ inputs.enable-migration }}
+        id: db_migrate
+        with:
+          cluster: ${{ steps.resolve.outputs.cluster }}
+          service: ${{ steps.resolve.outputs.service-id }}
+          container: ${{ steps.resolve.outputs.container }}
+          image: ${{ steps.image.outputs.out }}:${{ inputs.tag }}
+          command: '["sh", "-c", "alembic upgrade head && alembic check"]'
+          environment: ${{ inputs.migration-env-overrides || '[]' }}
+
+      - name: Deploy
+        uses: $/actions/atmos-ecs-deploy
+        id: deploy
+        with:
+          component: ${{ steps.resolve.outputs.component }}
+          stack: ${{ steps.resolve.outputs.stack }}
+          cluster: ${{ steps.resolve.outputs.cluster }}
+          service-id: ${{ steps.resolve.outputs.service-id }}
+          container: ${{ steps.resolve.outputs.container }}
+          tag: ${{ inputs.tag }}
+          previous-tag: ${{ steps.preflight.outputs.previous-tag }}
+          planfile: ${{ steps.preflight.outputs.planfile }}
+
+      - name: Run DB Rollback
+        uses: $/actions/ecs-run-task
+        if: ${{ failure() && inputs.enable-migration && inputs.support-rollback && ( steps.db_migrate.outcome == 'failure' || steps.deploy.outcome == 'failure' ) }}
+        with:
+          cluster: ${{ steps.resolve.outputs.cluster }}
+          service: ${{ steps.resolve.outputs.service-id }}
+          container: ${{ steps.resolve.outputs.container }}
+          image: ${{ steps.image.outputs.out }}:${{ inputs.tag }}
+          environment: ${{ inputs.migration-env-overrides || '[]' }}
+          extra-environment: '[{"name": "RUN_DB_ROLLBACK", "value": "true"}]'
+
+      - uses: Produce8/actions-aws-ssm-params-to-env@1.1.0
+        if: ${{ inputs.output-web-url }}
+        with:
+          ssm-path: ${{ steps.resolve.outputs.url-parameter }}
+          prefix: SSM_URL_
+          decryption: true
+
+      - name: Output web app url
+        id: result
+        run: |
+          echo "webapp-url=${SSM_URL_0}" >> $GITHUB_OUTPUT

@@ -1,0 +1,113 @@
+name: "Atmos ECS preflight"
+description: >-
+  Validate and plan an image-only deploy of an `ecs-service` component before anything
+  (e.g. a DB migration) touches the environment. Run atmos-ecs-resolve first (it checks
+  out the infrastructure repo and installs OpenTofu/Atmos). Saves a plan that
+  atmos-ecs-deploy applies, and fails if that plan would change anything other than the
+  task definition and the service's task definition reference, so an app release never
+  applies pending (unreviewed) infrastructure changes.
+inputs:
+  component:
+    required: true
+    description: "atmos-ecs-resolve's component output"
+  stack:
+    required: true
+    description: "atmos-ecs-resolve's stack output"
+  service-id:
+    required: true
+    description: "atmos-ecs-resolve's service-id output. Keys the image-tag SSM parameter."
+  ecr-repository:
+    required: true
+    description: "atmos-ecs-resolve's ecr-repository output"
+  image:
+    required: true
+    description: "Image URI without tag (ex. 123456789012.dkr.ecr.us-east-2.amazonaws.com/core-server)"
+  tag:
+    required: true
+    description: "Image tag to deploy"
+outputs:
+  previous-tag:
+    description: "The image tag recorded in SSM before this run"
+    value: ${{ steps.tag.outputs.previous }}
+  planfile:
+    description: "Absolute path of the saved plan"
+    value: ${{ steps.plan.outputs.planfile }}
+runs:
+  using: "composite"
+  steps:
+    - name: Check image
+      shell: bash
+      env:
+        ECR_REPOSITORY: ${{ inputs.ecr-repository }}
+        COMPONENT: ${{ inputs.component }}
+        IMAGE: ${{ inputs.image }}
+        TAG: ${{ inputs.tag }}
+      run: |
+        set -euo pipefail
+        # The component builds the image URI from its own `ecr_image` repo; refuse to
+        # write a tag that belongs to a different repository.
+        repo=${IMAGE#*/}
+        if [ "$repo" != "$ECR_REPOSITORY" ]; then
+          echo "::error::Image repository '$repo' does not match $COMPONENT's ECR repository '$ECR_REPOSITORY'"
+          exit 1
+        fi
+        aws ecr describe-images --registry-id "${IMAGE%%.*}" --repository-name "$repo" --image-ids imageTag="$TAG" >/dev/null
+
+    - name: Read image tag
+      id: tag
+      shell: bash
+      env:
+        PARAMETER: /ecs-service/${{ inputs.service-id }}/image-tag
+      run: |
+        set -euo pipefail
+        if ! previous=$(aws ssm get-parameter --name "$PARAMETER" --query Parameter.Value --output text 2>/dev/null); then
+          echo "::error::$PARAMETER does not exist. Apply this service's ecs-service component from the infrastructure repo first (with -var image_tag=<currently deployed tag>)."
+          exit 1
+        fi
+        echo "previous=$previous" >> "$GITHUB_OUTPUT"
+
+    - name: Plan
+      id: plan
+      shell: bash
+      working-directory: .infrastructure
+      env:
+        COMPONENT: ${{ inputs.component }}
+        STACK: ${{ inputs.stack }}
+        TAG: ${{ inputs.tag }}
+        TF_IN_AUTOMATION: "true"
+        TF_INPUT: "false"
+        # Wait for infra CI / drift detection / operators instead of failing on the state lock.
+        TF_CLI_ARGS_plan: "-lock-timeout=10m"
+      run: |
+        set -euo pipefail
+        planfile=$RUNNER_TEMP/ecs-deploy.planfile
+        atmos terraform plan "$COMPONENT" -s "$STACK" -var "image_tag=$TAG" -out="$planfile"
+        # components.terraform.base_path in the infrastructure repo's atmos.yaml
+        component_path=components/tofu/$(atmos describe component "$COMPONENT" -s "$STACK" --format json | jq -r '.component')
+
+        # Allowed: the task definition replaced with only its images changed, the service's
+        # task_definition reference, and the image-tag parameter's one-time create.
+        unexpected=$(cd "$component_path" && tofu show -json "$planfile" | jq -r '
+          # null, "", [] and {} are equivalent across provider reads and plans
+          def clean: with_entries(select(.value | . != null and . != "" and . != [] and . != {}));
+          def containers($td): $td.container_definitions | fromjson | map(del(.image) | clean);
+          # arn/id/revision are computed by AWS on replace
+          def settings($td): $td | del(.container_definitions, .arn, .arn_without_revision, .id, .revision) | clean;
+          .resource_changes[]
+          | select(.mode == "managed" and (.change.actions | . != ["no-op"] and . != ["read"]))
+          | . as $rc
+          | ($rc.change.before // {}) as $b | ($rc.change.after // {}) as $a | ($rc.change.after_unknown // {}) as $u
+          | select(
+              ($rc.address | endswith("aws_ecs_task_definition.default[0]")) and $u.container_definitions != true
+                and (try (containers($b) == containers($a) and settings($b) == settings($a)) catch false) as $taskdef
+              | ($rc.address == "aws_ssm_parameter.image_tag[0]" and $rc.change.actions == ["create"]) as $param
+              | ($rc.address | test("aws_ecs_service\\.[a-z_]+\\[0\\]$")) and $rc.change.actions == ["update"]
+                and ([($b + $a) | keys[] | select($b[.] != $a[.] or $u[.] == true)] - ["task_definition"] | length == 0) as $service
+              | ($taskdef or $param or $service) | not)
+          | "\($rc.address) \($rc.change.actions | join(","))"')
+        if [ -n "$unexpected" ]; then
+          echo "::error::$STACK has pending infrastructure changes beyond the image. Apply them from the infrastructure repo first:"
+          echo "$unexpected"
+          exit 1
+        fi
+        echo "planfile=$planfile" >> "$GITHUB_OUTPUT"
