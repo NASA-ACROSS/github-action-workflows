@@ -16,6 +16,12 @@ inputs:
   service-id:
     required: true
     description: "atmos-ecs-resolve's service-id output. Keys the image-tag SSM parameter."
+  cluster:
+    required: true
+    description: "atmos-ecs-resolve's cluster output"
+  container:
+    required: true
+    description: "atmos-ecs-resolve's container output"
   ecr-repository:
     required: true
     description: "atmos-ecs-resolve's ecr-repository output"
@@ -58,12 +64,32 @@ runs:
       shell: bash
       env:
         PARAMETER: /ecs-service/${{ inputs.service-id }}/image-tag
+        CLUSTER: ${{ inputs.cluster }}
+        SERVICE: ${{ inputs.service-id }}
+        CONTAINER: ${{ inputs.container }}
       run: |
         set -euo pipefail
-        if ! previous=$(aws ssm get-parameter --name "$PARAMETER" --query Parameter.Value --output text 2>/dev/null); then
-          echo "::error::$PARAMETER does not exist. Apply this service's ecs-service component from the infrastructure repo first (with -var image_tag=<currently deployed tag>)."
+        if previous=$(aws ssm get-parameter --name "$PARAMETER" --query Parameter.Value --output text 2>/dev/null); then
+          echo "previous=$previous" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        # First deploy since the component gained the image-tag parameter (e.g. a service
+        # migrated from ecspresso): fall back to the tag the service is running now. The
+        # plan creates the parameter and the deploy action writes it before applying.
+        td=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+          --query "services[?status=='ACTIVE'] | [0].deployments[?status=='PRIMARY'] | [0].taskDefinition" --output text)
+        if [ -z "$td" ] || [ "$td" = "None" ]; then
+          echo "::error::$PARAMETER does not exist and $SERVICE has no active deployment in $CLUSTER. Apply this service's ecs-service component from the infrastructure repo first (with -var image_tag=<tag>)."
           exit 1
         fi
+        image=$(aws ecs describe-task-definition --task-definition "$td" \
+          --query "taskDefinition.containerDefinitions[?name=='$CONTAINER'] | [0].image" --output text)
+        if [ "$image" = "None" ] || [[ "$image" != *:* ]] || [[ "$image" == *@* ]]; then
+          echo "::error::$PARAMETER does not exist and could not read a tag for container $CONTAINER from $td (image: $image)."
+          exit 1
+        fi
+        previous=${image##*:}
+        echo "::notice::$PARAMETER does not exist yet; using $SERVICE's running tag '$previous' as the previous tag. This deploy creates the parameter."
         echo "previous=$previous" >> "$GITHUB_OUTPUT"
 
     - name: Plan

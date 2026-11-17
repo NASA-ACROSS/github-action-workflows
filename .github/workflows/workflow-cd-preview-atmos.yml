@@ -206,6 +206,8 @@ jobs:
           component: ${{ steps.resolve.outputs.component }}
           stack: ${{ steps.resolve.outputs.stack }}
           service-id: ${{ steps.resolve.outputs.service-id }}
+          cluster: ${{ steps.resolve.outputs.cluster }}
+          container: ${{ steps.resolve.outputs.container }}
           ecr-repository: ${{ steps.resolve.outputs.ecr-repository }}
           image: ${{ steps.image.outputs.out }}
           tag: ${{ inputs.tag }}
