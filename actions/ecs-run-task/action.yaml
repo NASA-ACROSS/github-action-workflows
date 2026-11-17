@@ -65,13 +65,17 @@ runs:
         temp_def=""
         if [ -n "$IMAGE" ]; then
           # Same family, so the run uses the service's roles, env and logging verbatim.
-          temp_def=$(aws ecs describe-task-definition --task-definition "$task_def" --query taskDefinition --output json \
-            | jq --arg c "$CONTAINER" --arg i "$IMAGE" '
-                .containerDefinitions |= map(if .name == $c then .image = $i else . end)
-                | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities,
-                      .registeredAt, .registeredBy, .deregisteredAt)' \
-            | aws ecs register-task-definition --cli-input-json file:///dev/stdin \
-                --query taskDefinition.taskDefinitionArn --output text)
+          # Separate steps through a file (not a pipe into file:///dev/stdin) so a failure in
+          # any one of them surfaces as its own error instead of "Invalid JSON received".
+          td_json=$RUNNER_TEMP/ecs-run-task-taskdef.json
+          current=$(aws ecs describe-task-definition --task-definition "$task_def" --query taskDefinition --output json)
+          jq --arg c "$CONTAINER" --arg i "$IMAGE" '
+              if any(.containerDefinitions[]; .name == $c) then . else error("container \($c) not in task definition") end
+              | .containerDefinitions |= map(if .name == $c then .image = $i else . end)
+              | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities,
+                    .registeredAt, .registeredBy, .deregisteredAt)' <<<"$current" >"$td_json"
+          temp_def=$(aws ecs register-task-definition --cli-input-json "file://$td_json" \
+            --query taskDefinition.taskDefinitionArn --output text)
           task_def=$temp_def
           echo "Registered temporary task definition $temp_def"
         fi
