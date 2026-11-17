@@ -163,7 +163,10 @@ jobs:
           service: ${{ steps.resolve.outputs.service-id }}
           container: ${{ steps.resolve.outputs.container }}
           image: ${{ steps.image.outputs.out }}:${{ inputs.tag }}
-          command: '["sh", "-c", "alembic upgrade head && alembic check"]'
+          # Aurora Serverless v2 auto-pauses (min_capacity 0) and the first connection times out
+          # while it resumes. Wake it with a read-only `alembic current` before migrating, so a
+          # retry never re-runs a partially applied upgrade.
+          command: '["sh", "-c", "for i in 1 2 3 4 5; do alembic current >/dev/null && break; [ $i = 5 ] && exit 1; echo DB not reachable, retrying in 15s; sleep 15; done; alembic upgrade head && alembic check"]'
           environment: ${{ inputs.migration-env-overrides || '[]' }}
 
       - name: Deploy
