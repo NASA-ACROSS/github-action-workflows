@@ -38,13 +38,13 @@ runs:
       env:
         PARAMETER: /ecs-service/${{ inputs.service-id }}/image-tag
         TAG: ${{ inputs.tag }}
-        PREVIOUS: ${{ inputs.previous-tag }}
+        PREVIOUS_TAG: ${{ inputs.previous-tag }}
       run: |
         set -euo pipefail
         # Terraform ignores later changes to this parameter's value; it is the source of
         # truth for the next apply from the infrastructure repo.
         aws ssm put-parameter --name "$PARAMETER" --value "$TAG" --type String --overwrite >/dev/null
-        echo "$PARAMETER: $PREVIOUS -> $TAG"
+        echo "$PARAMETER: $PREVIOUS_TAG -> $TAG"
         echo "written=true" >> "$GITHUB_OUTPUT"
 
     - name: Deploy
@@ -102,7 +102,7 @@ runs:
         SERVICE: ${{ inputs.service-id }}
         CONTAINER: ${{ inputs.container }}
         TAG: ${{ inputs.tag }}
-        PREVIOUS: ${{ inputs.previous-tag }}
+        PREVIOUS_TAG: ${{ inputs.previous-tag }}
       run: |
         set -uo pipefail
         current=$(aws ssm get-parameter --name "$PARAMETER" --query Parameter.Value --output text)
@@ -118,5 +118,5 @@ runs:
           echo "::warning::$SERVICE's primary deployment is on $TAG ($(jq -r .state <<<"$primary")); leaving $PARAMETER at $TAG. Check the service."
           exit 0
         fi
-        aws ssm put-parameter --name "$PARAMETER" --value "$PREVIOUS" --type String --overwrite >/dev/null
-        echo "::warning::Deploy failed; restored $PARAMETER to $PREVIOUS"
+        aws ssm put-parameter --name "$PARAMETER" --value "$PREVIOUS_TAG" --type String --overwrite >/dev/null
+        echo "::warning::Deploy failed; restored $PARAMETER to $PREVIOUS_TAG"
