@@ -23,7 +23,7 @@ inputs:
   command:
     required: false
     default: ""
-    description: "JSON array command override for the container (ex. [\"sh\", \"-c\", \"alembic upgrade head\"])"
+    description: 'JSON array command override for the container (ex. ["sh", "-c", "alembic upgrade head"])'
   environment:
     required: false
     default: "[]"
@@ -62,13 +62,19 @@ runs:
           exit 1
         fi
 
+        current=$(aws ecs describe-task-definition --task-definition "$task_def" --query taskDefinition --output json)
+        log_config=$(jq -c --arg c "$CONTAINER" '.containerDefinitions[] | select(.name == $c) | .logConfiguration // {}' <<<"$current")
+        log_driver=$(jq -r '.logDriver // ""' <<<"${log_config:-{}}")
+        log_group=$(jq -r '.options["awslogs-group"] // ""' <<<"${log_config:-{}}")
+        log_prefix=$(jq -r '.options["awslogs-stream-prefix"] // ""' <<<"${log_config:-{}}")
+        log_region=$(jq -r '.options["awslogs-region"] // ""' <<<"${log_config:-{}}")
+
         temp_def=""
         if [ -n "$IMAGE" ]; then
           # Same family, so the run uses the service's roles, env and logging verbatim.
           # Separate steps through a file (not a pipe into file:///dev/stdin) so a failure in
           # any one of them surfaces as its own error instead of "Invalid JSON received".
           td_json=$RUNNER_TEMP/ecs-run-task-taskdef.json
-          current=$(aws ecs describe-task-definition --task-definition "$task_def" --query taskDefinition --output json)
           jq --arg c "$CONTAINER" --arg i "$IMAGE" '
               if any(.containerDefinitions[]; .name == $c) then . else error("container \($c) not in task definition") end
               | .containerDefinitions |= map(if .name == $c then .image = $i else . end)
@@ -107,8 +113,39 @@ runs:
         fi
         echo "Started $task"
 
+        log_token=""
+        log_stream=""
+        log_region_args=()
+        if [ "$log_driver" = "awslogs" ] && [ -n "$log_group" ] && [ -n "$log_prefix" ]; then
+          log_stream="$log_prefix/$CONTAINER/${task##*/}"
+          if [ -n "$log_region" ]; then
+            log_region_args=(--region "$log_region")
+          fi
+          echo "Streaming CloudWatch logs from $log_group/$log_stream"
+        else
+          echo "::warning::Container $CONTAINER does not have an awslogs group and stream prefix; logs cannot be streamed"
+        fi
+
+        stream_logs() {
+          [ -n "$log_stream" ] || return 0
+          local response
+          local token_args=()
+          if [ -n "$log_token" ]; then
+            token_args=(--next-token "$log_token")
+          fi
+          if response=$(aws logs get-log-events --log-group-name "$log_group" --log-stream-name "$log_stream" \
+            --start-from-head "${token_args[@]}" "${log_region_args[@]}" --output json 2>&1); then
+            jq -r '.events[].message | split("\n")[] | "[ecs] " + .' <<<"$response"
+            log_token=$(jq -r '.nextForwardToken' <<<"$response")
+          elif [[ "$response" != *ResourceNotFoundException* ]]; then
+            echo "::warning::Unable to stream CloudWatch logs: $response"
+            log_stream=""
+          fi
+        }
+
         deadline=$(( $(date +%s) + TIMEOUT_MINUTES * 60 ))
         while :; do
+          stream_logs
           status=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$task" --query 'tasks[0].lastStatus' --output text)
           if [ "$status" = "STOPPED" ]; then
             stopped=true
@@ -120,6 +157,13 @@ runs:
           fi
           sleep 10
         done
+
+        if [ -n "$log_stream" ]; then
+          for attempt in 1 2 3; do
+            sleep 5
+            stream_logs
+          done
+        fi
 
         result=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$task" \
           --query "tasks[0].{reason: stoppedReason, exit: containers[?name=='$CONTAINER'] | [0].exitCode}" --output json)
