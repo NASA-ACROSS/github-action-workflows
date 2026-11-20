@@ -1,31 +1,8 @@
 name: |-
-  Main branch workflow
+  DEPRECATED: use atmos-main-branch.yml
 
-  Build, test Docker image, and deploy it with ecspresso into the `dev` environment and draft new release
-
-  ### Usage
-
-  Create in your repo  __`.github/workflows/main.yaml`__
-
-  ```yaml
-    name: Main Branch
-    on:
-      push:
-        branches: [ master ]
-
-    jobs:
-      do:
-        uses: ./.github/workflows/ecspresso-main-branch.yml
-        with:
-          organization: "$\{\{ github.event.repository.owner.login }}"
-          repository: "$\{\{ github.event.repository.name }}"
-        secrets:
-          github-private-actions-pat: "$\{\{ secrets.PUBLIC_REPO_ACCESS_TOKEN }}"
-          registry: "$\{\{ secrets.ECR_REGISTRY }}"
-          secret-outputs-passphrase: "$\{\{ secrets.GHA_SECRET_OUTPUT_PASSPHRASE }}"
-          ecr-region: "$\{\{ secrets.ECR_REGION }}"
-          ecr-iam-role: "$\{\{ secrets.ECR_IAM_ROLE }}"
-  ```
+  Temporary alias kept so app repos calling ecspresso-main-branch.yml@main keep working while they
+  switch to atmos-main-branch.yml (ecspresso is no longer used). Delete once no caller references it.
 
 on:
   workflow_call:
@@ -64,10 +41,9 @@ on:
         required: false
         type: string
       build-args:
-          description: Additional build-args for docker build
-          required: false
-          type: string
-
+        description: Additional build-args for docker build
+        required: false
+        type: string
     secrets:
       secret-outputs-passphrase:
         description: "Passphrase to encrypt/decrypt secret outputs with gpg. For more information [read](https://github.com/cloudposse/github-action-secret-outputs)"
@@ -88,33 +64,15 @@ on:
         required: true
 
 jobs:
-  ci:
-    uses: ./.github/workflows/workflow-ci-dockerized-app-build.yml
+  atmos:
+    uses: ./.github/workflows/atmos-main-branch.yml
     with:
       organization: ${{ inputs.organization }}
       repository: ${{ inputs.repository }}
-      image-name: ${{ inputs.image-name }}
-      build-args: |
-        ${{ inputs.build-args }}
-        BUILD_VERSION=${{ github.event.pull_request.head.sha }}
-    secrets:
-      ecr-region: ${{ secrets.ecr-region }}
-      ecr-iam-role: ${{ secrets.ecr-iam-role }}
-      registry: ${{ secrets.registry }}
-      secret-outputs-passphrase: ${{ secrets.secret-outputs-passphrase }}
-
-  cd:
-    uses: ./.github/workflows/workflow-cd-ecspresso.yml
-    needs: [ ci ]
-    with:
-      image: ${{ needs.ci.outputs.image }}
-      tag: ${{ needs.ci.outputs.tag }}
-      repository: ${{ inputs.repository }}
-      environment: dev
       enable-migration: ${{ inputs.enable-migration }}
-      migration-env-overrides: ${{ inputs.migration-env-overrides }}
       support-rollback: ${{ inputs.support-rollback }}
+      image-name: ${{ inputs.image-name }}
       app: ${{ inputs.app }}
-    secrets:
-      secret-outputs-passphrase: "${{ secrets.secret-outputs-passphrase }}"
-      github-private-actions-pat: "${{ secrets.github-private-actions-pat }}"
+      migration-env-overrides: ${{ inputs.migration-env-overrides }}
+      build-args: ${{ inputs.build-args }}
+    secrets: inherit

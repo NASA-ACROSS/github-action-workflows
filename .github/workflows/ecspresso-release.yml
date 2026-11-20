@@ -1,32 +1,8 @@
 name: |-
-  Release workflow
+  DEPRECATED: use atmos-release.yml
 
-  Promote existing Docker image to release version, deploy it with Spacelift to `staging` and then `production` environments.
-
-  ### Usage
-
-  Create in your repo  __`.github/workflows/release.yaml`__
-
-  ```yaml
-    name: Release
-    on:
-      release:
-        types: [published]
-
-    jobs:
-      perform:
-        uses: ./.github/workflows/ecspresso-release.yml
-        with:
-          organization: "$\{\{ github.event.repository.owner.login \}\}"
-          repository: "$\{\{ github.event.repository.name \}\}"
-          version: $\{\{ github.event.release.tag_name \}\}
-        secrets:
-          github-private-actions-pat: "$\{\{ secrets.PUBLIC_AND_PRIVATE_REPO_ACCESS_TOKEN_REPO \}\}"
-          registry: "$\{\{ secrets.ECR_REGISTRY \}\}"
-          secret-outputs-passphrase: "$\{\{ secrets.GHA_SECRET_OUTPUT_PASSPHRASE \}\}"
-          ecr-region: "$\{\{ secrets.ECR_REGION \}\}"
-          ecr-iam-role: "$\{\{ secrets.ECR_IAM_ROLE \}\}"
-  ```
+  Temporary alias kept so app repos calling ecspresso-release.yml@main keep working while they
+  switch to atmos-release.yml (ecspresso is no longer used). Delete once no caller references it.
 
 on:
   workflow_call:
@@ -87,48 +63,15 @@ on:
         required: true
 
 jobs:
-  ci:
-    uses: ./.github/workflows/workflow-ci-dockerized-app-promote.yml
+  atmos:
+    uses: ./.github/workflows/atmos-release.yml
     with:
       organization: ${{ inputs.organization }}
       repository: ${{ inputs.repository }}
       version: ${{ inputs.version }}
-    secrets:
-      ecr-region: ${{ secrets.ecr-region }}
-      ecr-iam-role: ${{ secrets.ecr-iam-role }}
-      registry: ${{ secrets.registry }}
-      secret-outputs-passphrase: ${{ secrets.secret-outputs-passphrase }}
-
-  cd-staging:
-    name: cd / staging
-    uses: ./.github/workflows/workflow-cd-ecspresso.yml
-    needs: [ ci ]
-    with:
-      image: ${{ needs.ci.outputs.image }}
-      tag: ${{ needs.ci.outputs.tag }}
-      repository: ${{ inputs.repository }}
-      environment: staging
       enable-migration: ${{ inputs.enable-migration }}
-      migration-env-overrides: ${{inputs.migration-env-overrides}}
       support-rollback: ${{ inputs.support-rollback }}
+      image-name: ${{ inputs.image-name }}
       app: ${{ inputs.app }}
-    secrets:
-      secret-outputs-passphrase: ${{ secrets.secret-outputs-passphrase }}
-      github-private-actions-pat: ${{ secrets.github-private-actions-pat }}
-
-  cd-production:
-    name: cd / production
-    uses: ./.github/workflows/workflow-cd-ecspresso.yml
-    needs: [ ci, cd-staging ]
-    with:
-      image: ${{ needs.ci.outputs.image }}
-      tag: ${{ needs.ci.outputs.tag }}
-      repository: ${{ inputs.repository }}
-      environment: prod
-      enable-migration: ${{ inputs.enable-migration }}
-      migration-env-overrides: ${{inputs.migration-env-overrides}}
-      support-rollback: ${{ inputs.support-rollback }}
-      app: ${{ inputs.app }}
-    secrets:
-      secret-outputs-passphrase: ${{ secrets.secret-outputs-passphrase }}
-      github-private-actions-pat: ${{ secrets.github-private-actions-pat }}
+      migration-env-overrides: ${{ inputs.migration-env-overrides }}
+    secrets: inherit
